@@ -197,6 +197,13 @@ Pestaña "Reportes":
 - Los colores de fondo/texto/bordes se redefinen bajo `.dark`
 - Los colores de botones (violeta, verde, rojo) se mantienen
 
+### 9. Automatización Keep-Alive (Prevenir suspensión de Supabase)
+
+Para evitar que la base de datos de Supabase se desactive / pause por inactividad tras 7 días sin tráfico:
+- **GitHub Actions (`.github/workflows/keep-alive.yml`):** Ejecuta un cron automatizado cada 2 días (`0 8 */2 * *`) que corre `scripts/keep-alive.mjs`.
+- **Script Keep-Alive (`scripts/keep-alive.mjs`):** Se conecta a Supabase, inserta una transacción temporal de prueba (`FOL-PING-XXXXXX`) y la elimina de inmediato, manteniendo la base de datos activa y 100% limpia.
+- **Endpoint API (`src/app/api/keep-alive/route.js`):** Ruta `GET /api/keep-alive` lista para invocarse desde cualquier monitor externo (Vercel Cron, Cron-job.org, etc.).
+
 ---
 
 ## Cómo ejecutar
@@ -213,11 +220,14 @@ La app corre en `http://localhost:3000`.
 
 ## Archivos clave
 
-| Archivo                     | Función                                                 |
-|-----------------------------|---------------------------------------------------------|
-| `src/app/page.js`          | Login con PIN, consulta tabla `usuarios`                |
-| `src/app/finanzas/page.js` | Dashboard completo: gráficas, tablas, modales, filtros  |
-| `src/app/globals.css`      | Todos los estilos + variables CSS + dark mode           |
-| `src/app/layout.js`        | Layout raíz, carga de fuentes Google                    |
-| `src/lib/supabase.js`      | Inicialización del cliente Supabase                     |
-| `.env.local`               | URL y API key de Supabase                               |
+| Archivo                              | Función                                                 |
+|--------------------------------------|---------------------------------------------------------|
+| `src/app/page.js`                   | Login con PIN, consulta tabla `usuarios`                |
+| `src/app/finanzas/page.js`          | Dashboard completo: gráficas, tablas, modales, filtros  |
+| `src/app/globals.css`               | Todos los estilos + variables CSS + dark mode           |
+| `src/app/layout.js`                 | Layout raíz, carga de fuentes Google                    |
+| `src/lib/supabase.js`               | Inicialización del cliente Supabase                     |
+| `src/app/api/keep-alive/route.js`   | Endpoint HTTP para ping automatizado keep-alive         |
+| `scripts/keep-alive.mjs`            | Script Node para registrar y limpiar movimiento ping    |
+| `.github/workflows/keep-alive.yml`  | GitHub Actions cron cada 2 días                         |
+| `.env.local`                        | URL y API key de Supabase                               |
