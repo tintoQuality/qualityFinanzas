@@ -1,69 +1,173 @@
-import Image from "next/image";
+'use client'
+import { useState } from 'react'
+import { supabase } from '@/lib/supabase'
+import { useRouter } from 'next/navigation'
 
-export default function Home() {
+export default function LoginPage() {
+  const [pin, setPin] = useState('')
+  const [showPassword, setShowPassword] = useState(false)
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [isFocused, setIsFocused] = useState(false)
+  const router = useRouter()
+
+  const handleLogin = async (e) => {
+    e?.preventDefault()
+    setError('')
+
+    const cleanPin = pin.trim()
+    if (!cleanPin) {
+      setError('Ingresa tu código de acceso')
+      return
+    }
+
+    setIsLoading(true)
+
+    try {
+      // Consulta a la tabla usuarios por PIN único
+      const { data, error: sbError } = await supabase
+        .from('usuarios')
+        .select('*')
+        .eq('pin_hash', cleanPin)
+
+      if (sbError || !data || data.length === 0) {
+        setError('Código de acceso incorrecto')
+        setIsLoading(false)
+        return
+      }
+
+      const usuario = data[0]
+
+      if (usuario.activo === false) {
+        setError('Usuario inactivo. Contacte al administrador.')
+        setIsLoading(false)
+        return
+      }
+
+      // Guardar sesión y redirigir
+      localStorage.setItem('usuario_id', usuario.id)
+      router.push('/finanzas')
+    } catch (err) {
+      console.error(err)
+      setError('Error al conectar con la base de datos')
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert h-5 w-[100px]"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the{" "}
-            <code className="rounded bg-black/[.06] px-1.5 py-0.5 font-mono text-[0.9em] dark:bg-white/[.08]">
-              page.js
-            </code>{" "}
-            file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <main className="quality-login-viewport">
+      <div className="quality-auth-card">
+        {/* Top Geometric Luxury Emblem Badge */}
+        <div className="quality-emblem-badge" aria-hidden="true">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75">
+            {/* Minimalist Geometric Flower / Aperture Spiral like in the reference image */}
+            <circle cx="12" cy="12" r="9" stroke="rgba(255,255,255,0.4)" strokeDasharray="3 3" />
+            <circle cx="12" cy="12" r="5" stroke="currentColor" />
+            <circle cx="12" cy="12" r="2" fill="currentColor" />
+            <path d="M12 3v3M12 18v3M3 12h3M18 12h3" stroke="rgba(255,255,255,0.6)" strokeLinecap="round" />
+            <path d="m5.6 5.6 2.1 2.1M16.3 16.3l2.1 2.1M5.6 18.4l2.1-2.1M16.3 7.7l2.1-2.1" stroke="rgba(255,255,255,0.35)" strokeLinecap="round" />
+          </svg>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert h-[14px] w-4"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={14}
+
+        {/* Title & Subtitle */}
+        <header className="quality-card-header">
+          <h1 className="quality-card-title">Finanzas Quality</h1>
+          <p className="quality-card-subtitle">Ingresa tu código único de acceso</p>
+        </header>
+
+        {/* Single Input Form */}
+        <form onSubmit={handleLogin} className="quality-auth-form" noValidate>
+          {/* Single PIN / Access Code Field */}
+          <div className={`quality-input-wrapper ${isFocused ? 'focused' : ''}`}>
+            {/* Lock icon */}
+            <svg
+              className="quality-input-icon"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              aria-hidden="true"
+            >
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+              <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+            </svg>
+
+            <input
+              id="quality-access-code"
+              type={showPassword ? 'text' : 'password'}
+              value={pin}
+              onChange={(e) => setPin(e.target.value)}
+              onFocus={() => setIsFocused(true)}
+              onBlur={() => setIsFocused(false)}
+              placeholder="Código de acceso"
+              className="quality-single-input"
+              autoFocus
+              autoComplete="current-password"
             />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+
+            {/* Visibility Toggle Button */}
+            <button
+              type="button"
+              onClick={() => setShowPassword(!showPassword)}
+              className="quality-toggle-visibility-btn"
+              aria-label={showPassword ? 'Ocultar código' : 'Mostrar código'}
+            >
+              {showPassword ? (
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+                  <line x1="1" y1="1" x2="23" y2="23" />
+                </svg>
+              ) : (
+                <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+                  <circle cx="12" cy="12" r="3" />
+                </svg>
+              )}
+            </button>
+          </div>
+
+          {/* Error Message */}
+          {error && (
+            <div className="quality-error-msg" role="alert">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <circle cx="12" cy="12" r="10" />
+                <line x1="12" y1="8" x2="12" y2="12" />
+                <line x1="12" y1="16" x2="12.01" y2="16" />
+              </svg>
+              <span>{error}</span>
+            </div>
+          )}
+
+          {/* Solid White High-Contrast Submit Button */}
+          <button
+            type="submit"
+            disabled={isLoading}
+            className="quality-submit-btn"
           >
-            Documentation
-          </a>
-        </div>
-      </main>
-    </div>
-  );
+            {isLoading ? (
+              <>
+                <svg className="animate-spin" width="18" height="18" viewBox="0 0 24 24" fill="none">
+                  <circle cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="3" strokeDasharray="32" strokeLinecap="round" opacity="0.3" />
+                  <path d="M12 2a10 10 0 0 1 10 10" stroke="currentColor" strokeWidth="3" strokeLinecap="round" />
+                </svg>
+                <span>Validando...</span>
+              </>
+            ) : (
+              'Ingresar'
+            )}
+          </button>
+        </form>
+
+        {/* Security Footnote */}
+        <footer className="quality-card-footer">
+          <span>Acceso seguro</span>
+          <span className="quality-footer-dot" aria-hidden="true" />
+          <span>Sistema Quality</span>
+        </footer>
+      </div>
+    </main>
+  )
 }
