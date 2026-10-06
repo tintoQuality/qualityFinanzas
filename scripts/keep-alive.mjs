@@ -34,7 +34,6 @@ async function runKeepAlive() {
       monto: 0.01,
       categoria: 'Sistema',
       concepto: 'KeepAlive Ping Automático',
-      establecimiento: 'Plaza',
       folio_visual: folio,
       id_usuario: userId,
       retirado: true

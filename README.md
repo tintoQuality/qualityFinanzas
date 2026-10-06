@@ -63,7 +63,6 @@ Se usa únicamente para el login. La app busca un registro cuyo `pin_hash` coinc
 | concepto        | text      | Descripción breve del movimiento               |
 | categoria       | text      | Categoría del movimiento (ej. Alimentación)    |
 | tipo            | text      | `"Entrada"` o `"Salida"`                       |
-| establecimiento | text      | Sucursal/entidad: `"Plaza"` o `"San Mateo"`    |
 | monto           | numeric   | Cantidad monetaria                             |
 | id_usuario      | uuid      | FK → usuarios.id                               |
 | retirado        | boolean   | Si es `true`, el registro existe pero no se cuenta en saldos ni gráficas |
@@ -71,7 +70,6 @@ Se usa únicamente para el login. La app busca un registro cuyo `pin_hash` coinc
 > **Migraciones SQL:**
 > ```sql
 > ALTER TABLE transacciones ADD COLUMN IF NOT EXISTS retirado boolean DEFAULT false;
-> ALTER TABLE transacciones ADD COLUMN IF NOT EXISTS establecimiento text DEFAULT 'Plaza';
 > ```
 
 ---
@@ -95,7 +93,7 @@ Montaje del componente Finanzas
   → useEffect dispara load()
   → supabase.from('transacciones').select('*').order('creado_en', { ascending: false })
   → Cada fila se transforma con mapRow() a un objeto normalizado:
-      { id, folio, date, concepto, categoria, tipo, amount, retirado, establecimiento }
+      { id, folio, date, concepto, categoria, tipo, amount, retirado }
   → Se guarda en el estado movements (useState)
 ```
 
@@ -105,14 +103,13 @@ La función `reload()` hace la misma consulta y se llama después de cada insert
 
 ```
 1. Usuario abre el modal → formulario controlado por estado addForm
-2. Selecciona: establecimiento (Plaza / San Mateo), tipo (entrada/salida), monto, categoría, concepto
+2. Selecciona: tipo (entrada/salida), monto, categoría, concepto
 3. Al enviar (handleAddSubmit):
    a. Validación en cliente (monto > 0, categoría y concepto requeridos)
    b. Se obtiene usuario_id de localStorage
    c. Insert a Supabase:
       supabase.from('transacciones').insert([{
         tipo, monto, categoria, concepto,
-        establecimiento,
         id_usuario, folio_visual: 'FOL-' + timestamp,
         retirado: false
       }])
@@ -165,28 +162,17 @@ La gráfica **no usa ninguna librería**. Se genera con CSS `conic-gradient` cal
 Cada fila de la tabla tiene un botón de 3 puntos
   → Al hacer clic: calcula posición del menú flotante (getBoundingClientRect)
   → Aparecen opciones:
-      "Modificar" → abre modal con categoría y concepto editables
-      "Retirar"   → confirma, actualiza retirado=true en Supabase
+      "Modificar" → abre modal con categoría, concepto y monto editables
+      "Eliminar"  → confirma y elimina de la base de datos
 ```
-
-**Modificar:**
-- Muestra ID, fecha y monto como referencia (solo lectura)
-- Permite editar categoría y concepto
-- Ejecuta `supabase.from('transacciones').update({categoria, concepto}).eq('id', id)`
-
-**Retirar:**
-- Marca `retirado: true` en Supabase
-- La fila se muestra en rojo apagado / gris
-- El registro **no se elimina** pero se excluye del saldo y de la gráfica
 
 ### 7. Reportes y Exportación a Excel
 
 ```
 Pestaña "Reportes":
   - Filtro por tipo de reporte: Frecuencia por categoría, Montos por categoría, Ingresos vs Gastos
-  - Filtro por establecimiento: Todos, Plaza, San Mateo
   - Filtro por periodo: Todo, Hoy, Rango de fechas, Semana, Mes, 2 meses, Año
-  - Botón "Exportar a Excel": Descarga un archivo .xls enriquecido con estilos, métricas calculadas y detalle de transacciones según los filtros seleccionados
+  - Botón "Exportar a Excel": Descarga un archivo .xls enriquecido con estilos, resúmenes ejecutivos calculados y detalle de transacciones según el periodo seleccionado
 ```
 
 ### 8. Tema oscuro

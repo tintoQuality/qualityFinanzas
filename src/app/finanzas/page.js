@@ -56,12 +56,6 @@ const TYPE_OPTIONS = [
   { value: 'salida', label: 'Salidas' },
 ]
 
-const ESTABLECIMIENTO_OPTIONS = [
-  { value: 'all', label: 'Todos los establecimientos' },
-  { value: 'Plaza', label: 'Plaza' },
-  { value: 'San Mateo', label: 'San Mateo' },
-]
-
 const SORT_OPTIONS = [
   { value: 'date', label: 'Más recientes' },
   { value: 'amount-asc', label: 'Monto ↑ (Menor a mayor)' },
@@ -237,7 +231,6 @@ function mapRow(t) {
     tipo: (t.tipo || '').toLowerCase(),
     amount: Number(t.monto) || 0,
     retirado: t.retirado || false,
-    establecimiento: t.establecimiento || 'Plaza',
   }
 }
 
@@ -280,27 +273,14 @@ function donutFor(items) {
   return { style: { background: `conic-gradient(${stops.join(', ')})` }, total }
 }
 
-function ReportCard({ title, items, money = false, establecimiento = 'all' }) {
+function ReportCard({ title, items, money = false }) {
   const total = items.reduce((s, it) => s + it.value, 0)
   const donut = donutFor(aggregateTop(items, 6))
   const tableItems = items.slice(0, 8)
   return (
     <section className="report-card">
       <div className="report-card-header">
-        <div>
-          <h2 className="overview-title">{title}</h2>
-          <div className="report-branch-indicator">
-            {establecimiento === 'Plaza' && (
-              <span className="branch-badge branch-plaza"><span className="branch-dot"></span>Plaza</span>
-            )}
-            {establecimiento === 'San Mateo' && (
-              <span className="branch-badge branch-san-mateo"><span className="branch-dot"></span>San Mateo</span>
-            )}
-            {establecimiento === 'all' && (
-              <span className="report-all-badge">Todos los establecimientos</span>
-            )}
-          </div>
-        </div>
+        <h2 className="overview-title">{title}</h2>
         <span className="count-badge">{items.length} categoría{items.length === 1 ? '' : 's'}</span>
       </div>
       {total === 0 ? (
@@ -342,26 +322,13 @@ function ReportCard({ title, items, money = false, establecimiento = 'all' }) {
   )
 }
 
-function TotalesCard({ totales, establecimiento = 'all' }) {
+function TotalesCard({ totales }) {
   const { entrada, salida, total } = totales
   if (total <= 0) {
     return (
       <section className="report-card">
         <div className="report-card-header">
-          <div>
-            <h2 className="overview-title">Ingresos vs Gastos</h2>
-            <div className="report-branch-indicator">
-              {establecimiento === 'Plaza' && (
-                <span className="branch-badge branch-plaza"><span className="branch-dot"></span>Plaza</span>
-              )}
-              {establecimiento === 'San Mateo' && (
-                <span className="branch-badge branch-san-mateo"><span className="branch-dot"></span>San Mateo</span>
-              )}
-              {establecimiento === 'all' && (
-                <span className="report-all-badge">Todos los establecimientos</span>
-              )}
-            </div>
-          </div>
+          <h2 className="overview-title">Ingresos vs Gastos</h2>
         </div>
         <p className="empty-cat">Sin datos para este reporte.</p>
       </section>
@@ -376,20 +343,7 @@ function TotalesCard({ totales, establecimiento = 'all' }) {
   return (
     <section className="report-card">
       <div className="report-card-header">
-        <div>
-          <h2 className="overview-title">Ingresos vs Gastos</h2>
-          <div className="report-branch-indicator">
-            {establecimiento === 'Plaza' && (
-              <span className="branch-badge branch-plaza"><span className="branch-dot"></span>Plaza</span>
-            )}
-            {establecimiento === 'San Mateo' && (
-              <span className="branch-badge branch-san-mateo"><span className="branch-dot"></span>San Mateo</span>
-            )}
-            {establecimiento === 'all' && (
-              <span className="report-all-badge">Todos los establecimientos</span>
-            )}
-          </div>
-        </div>
+        <h2 className="overview-title">Ingresos vs Gastos</h2>
         <span className="count-badge">Mayor: {winner}</span>
       </div>
       <div className="report-grid">
@@ -443,7 +397,6 @@ export default function Finanzas() {
     period: 'all',
     type: 'all',
     sort: 'date',
-    establecimiento: 'all',
     startDate: '',
     endDate: '',
   })
@@ -453,7 +406,6 @@ export default function Finanzas() {
   const [reportPeriod, setReportPeriod] = useState('all')
   const [reportStartDate, setReportStartDate] = useState('')
   const [reportEndDate, setReportEndDate] = useState('')
-  const [reportEstablecimiento, setReportEstablecimiento] = useState('all')
   const [drawerOpen, setDrawerOpen] = useState(false)
 
   const darkMode = useSyncExternalStore(subscribeDarkMode, getDarkModeSnapshot, getDarkModeServerSnapshot)
@@ -481,7 +433,7 @@ export default function Finanzas() {
 
   const [addModalOpen, setAddModalOpen] = useState(false)
   const [addModalShown, setAddModalShown] = useState(false)
-  const [addForm, setAddForm] = useState({ monto:'', tipo:'entrada', categoria:'', concepto:'', establecimiento:'Plaza' })
+  const [addForm, setAddForm] = useState({ monto:'', tipo:'entrada', categoria:'', concepto:'' })
   const [addErrors, setAddErrors] = useState({})
 
   const [editModalOpen, setEditModalOpen] = useState(false)
@@ -490,7 +442,6 @@ export default function Finanzas() {
   const [editCategoria, setEditCategoria] = useState('')
   const [editConcepto, setEditConcepto] = useState('')
   const [editMonto, setEditMonto] = useState('')
-  const [editEstablecimiento, setEditEstablecimiento] = useState('Plaza')
   const [editErrors, setEditErrors] = useState({})
 
   const [menuTarget, setMenuTarget] = useState(null)
@@ -550,7 +501,6 @@ export default function Finanzas() {
   const filtered = useMemo(() => {
     let result = movements.filter(m => {
       if (filters.type !== 'all' && m.tipo !== filters.type) return false
-      if (filters.establecimiento !== 'all' && m.establecimiento !== filters.establecimiento) return false
       return matchesDatePeriod(m.date, filters.period, filters.startDate, filters.endDate)
     })
     if (filters.sort === 'amount-asc') result = [...result].sort((a,b) => a.amount - b.amount)
@@ -593,11 +543,10 @@ export default function Finanzas() {
   const pageRows = filtered.slice((page - 1) * PER_PAGE, page * PER_PAGE)
 
   function exportCSV() {
-    const header = ['Fecha','Folio','Establecimiento','Concepto','Categoría','Tipo','Monto']
+    const header = ['Fecha','Folio','Concepto','Categoría','Tipo','Monto']
     const rows = filtered.map(m => [
       new Date(m.date).toLocaleDateString('es-MX'),
       m.folio,
-      `"${String(m.establecimiento || 'Plaza').replace(/"/g,'""')}"`,
       `"${String(m.concepto || '').replace(/"/g,'""')}"`,
       `"${String(m.categoria || '').replace(/"/g,'""')}"`,
       m.tipo === 'entrada' ? 'Entrada' : 'Salida',
@@ -621,10 +570,9 @@ export default function Finanzas() {
   const active = useMemo(() => {
     return movements.filter(m => {
       if (m.retirado) return false
-      if (reportEstablecimiento !== 'all' && m.establecimiento !== reportEstablecimiento) return false
       return matchesDatePeriod(m.date, reportPeriod, reportStartDate, reportEndDate)
     })
-  }, [movements, reportPeriod, reportStartDate, reportEndDate, reportEstablecimiento])
+  }, [movements, reportPeriod, reportStartDate, reportEndDate])
 
   const reportFrecuencia = useMemo(() => {
     const byTipo = { entrada: {}, salida: {} }
@@ -660,10 +608,8 @@ export default function Finanzas() {
 
   function exportReportExcel() {
     const periodDesc = getPeriodDescription(reportPeriod, reportStartDate, reportEndDate)
-    const estLabel = reportEstablecimiento === 'all' ? 'Todos los establecimientos' : reportEstablecimiento
     const genDate = new Date().toLocaleString('es-MX')
     const dateSlug = new Date().toISOString().slice(0, 10)
-    const estSlug = reportEstablecimiento === 'all' ? 'todos' : reportEstablecimiento.toLowerCase().replace(/\s+/g, '_')
 
     let reportTitle = 'Reporte de Ingresos vs Gastos'
     let reportFilePrefix = 'reporte_ingresos_vs_gastos'
@@ -676,7 +622,7 @@ export default function Finanzas() {
       reportFilePrefix = 'reporte_montos_categorias'
     }
 
-    const fileName = `${reportFilePrefix}_${estSlug}_${dateSlug}.xls`
+    const fileName = `${reportFilePrefix}_${dateSlug}.xls`
 
     // Construcción del contenido HTML compatible con Excel
     let summaryHtml = ''
@@ -808,7 +754,6 @@ export default function Finanzas() {
       <tr>
         <td>${formatDate(m.date)}</td>
         <td style="font-family:monospace;">${m.folio}</td>
-        <td>${m.establecimiento || 'Plaza'}</td>
         <td style="font-weight:bold; color:${m.tipo === 'entrada' ? '#059669' : '#dc2626'};">${m.tipo === 'entrada' ? 'Entrada' : 'Salida'}</td>
         <td>${m.categoria}</td>
         <td>${m.concepto}</td>
@@ -842,19 +787,17 @@ export default function Finanzas() {
         <!-- Metadata Header -->
         <table border="0" cellpadding="5" cellspacing="0" style="margin-bottom:18px; font-family: Segoe UI, Arial, sans-serif;">
           <tr>
-            <td colspan="7" style="font-size:16pt; font-weight:bold; color:#ffffff; background-color:#1e1b4b; padding:12px;">${reportTitle}</td>
+            <td colspan="6" style="font-size:16pt; font-weight:bold; color:#ffffff; background-color:#1e1b4b; padding:12px;">${reportTitle}</td>
           </tr>
           <tr style="background-color:#f1f5f9;">
-            <td style="font-weight:bold; color:#475569; width:130px;">Establecimiento:</td>
-            <td colspan="2" style="font-weight:bold; color:#0f172a;">${estLabel}</td>
-            <td style="font-weight:bold; color:#475569; width:110px;">Periodo:</td>
-            <td colspan="3" style="font-weight:bold; color:#0f172a;">${periodDesc}</td>
+            <td style="font-weight:bold; color:#475569; width:130px;">Periodo:</td>
+            <td colspan="5" style="font-weight:bold; color:#0f172a;">${periodDesc}</td>
           </tr>
           <tr style="background-color:#f8fafc;">
             <td style="font-weight:bold; color:#475569;">Fecha de emisión:</td>
             <td colspan="2">${genDate}</td>
             <td style="font-weight:bold; color:#475569;">Registros incluidos:</td>
-            <td colspan="3">${active.length} movimientos</td>
+            <td colspan="2">${active.length} movimientos</td>
           </tr>
         </table>
 
@@ -864,18 +807,17 @@ export default function Finanzas() {
         <!-- Detalle de transacciones -->
         <table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse; width:100%; font-family: Segoe UI, Arial, sans-serif;">
           <tr style="background-color:#1e293b; color:#ffffff; font-weight:bold;">
-            <th colspan="7" style="font-size:11pt; text-align:left; padding:8px;">DETALLE DE TRANSACCIONES (${active.length} registros)</th>
+            <th colspan="6" style="font-size:11pt; text-align:left; padding:8px;">DETALLE DE TRANSACCIONES (${active.length} registros)</th>
           </tr>
           <tr style="background-color:#f1f5f9; font-weight:bold;">
             <th style="width:110px; text-align:left;">Fecha</th>
             <th style="width:100px; text-align:left;">Folio</th>
-            <th style="width:130px; text-align:left;">Establecimiento</th>
             <th style="width:90px; text-align:left;">Tipo</th>
             <th style="width:150px; text-align:left;">Categoría</th>
-            <th style="width:260px; text-align:left;">Concepto</th>
+            <th style="width:280px; text-align:left;">Concepto</th>
             <th style="width:130px; text-align:right;">Monto ($)</th>
           </tr>
-          ${detailRowsHtml || '<tr><td colspan="7" style="text-align:center; padding:14px; color:#64748b;">No hay transacciones para los filtros seleccionados</td></tr>'}
+          ${detailRowsHtml || '<tr><td colspan="6" style="text-align:center; padding:14px; color:#64748b;">No hay transacciones para los filtros seleccionados</td></tr>'}
         </table>
       </body>
       </html>
@@ -912,7 +854,7 @@ export default function Finanzas() {
   function openAddModal() {
     setAddModalOpen(true)
     requestAnimationFrame(() => setAddModalShown(true))
-    setAddForm({ monto:'', tipo:'entrada', categoria:'', concepto:'', establecimiento:'Plaza' })
+    setAddForm({ monto:'', tipo:'entrada', categoria:'', concepto:'' })
     setAddErrors({})
     setTimeout(() => montoRef.current && montoRef.current.focus(), 80)
   }
@@ -929,7 +871,6 @@ export default function Finanzas() {
     setEditCategoria(m.categoria)
     setEditConcepto(m.concepto)
     setEditMonto(String(m.amount))
-    setEditEstablecimiento(m.establecimiento || 'Plaza')
     setEditErrors({})
     setEditModalOpen(true)
     requestAnimationFrame(() => setEditModalShown(true))
@@ -987,42 +928,23 @@ export default function Finanzas() {
       monto,
       categoria: addForm.categoria.trim(),
       concepto: addForm.concepto.trim(),
-      establecimiento: addForm.establecimiento || 'Plaza',
       id_usuario: userId,
       folio_visual: 'FOL-' + Date.now().toString().slice(-5),
       retirado: false,
     }
 
-    let insertRes = await supabase.from('transacciones').insert([payload])
-    let hadFallback = false
+    const { error: insertError } = await supabase.from('transacciones').insert([payload])
 
-    // Si Supabase devuelve error por columna inexistente (ej. 'establecimiento' o 'retirado' aún no agregados)
-    if (insertRes.error) {
-      console.warn('Error al insertar con establecimiento:', insertRes.error)
-      const errText = (insertRes.error.message || '') + (insertRes.error.details || '') + (insertRes.error.hint || '')
-      
-      if (insertRes.error.code === 'PGRST204' || errText.toLowerCase().includes('establecimiento') || insertRes.error.code === '42703') {
-        const fallbackPayload = { ...payload }
-        delete fallbackPayload.establecimiento
-        insertRes = await supabase.from('transacciones').insert([fallbackPayload])
-        hadFallback = true
-      }
-    }
-
-    if (insertRes.error) {
-      console.error('Error final al insertar en Supabase:', insertRes.error)
-      showToast('Error: ' + (insertRes.error.message || 'No se pudo guardar el movimiento.'))
+    if (insertError) {
+      console.error('Error al insertar en Supabase:', insertError)
+      showToast('Error: ' + (insertError.message || 'No se pudo guardar el movimiento.'))
       return
     }
 
-    setFilters({ period:'all', type:'all', sort:'date', establecimiento:'all', startDate:'', endDate:'' })
+    setFilters({ period:'all', type:'all', sort:'date', startDate:'', endDate:'' })
     setPage(1)
     closeAddModal()
-    if (hadFallback) {
-      showToast('Movimiento registrado. (Recuerda ejecutar el script SQL en Supabase para habilitar el campo establecimiento).')
-    } else {
-      showToast('Movimiento registrado correctamente.')
-    }
+    showToast('Movimiento registrado correctamente.')
     await reload()
   }
 
@@ -1038,34 +960,18 @@ export default function Finanzas() {
     if (Object.keys(errs).length > 0) { setEditErrors(errs); return }
     if (!editTarget) return
 
-    let updateRes = await supabase
+    const { error: updateError } = await supabase
       .from('transacciones')
       .update({
         categoria: editCategoria.trim(),
         concepto: editConcepto.trim(),
-        monto,
-        establecimiento: editEstablecimiento || 'Plaza'
+        monto
       })
       .eq('id', editTarget.id)
 
-    if (updateRes.error) {
-      console.warn('Error al actualizar con establecimiento:', updateRes.error)
-      const errText = (updateRes.error.message || '') + (updateRes.error.details || '') + (updateRes.error.hint || '')
-      if (updateRes.error.code === 'PGRST204' || errText.toLowerCase().includes('establecimiento') || updateRes.error.code === '42703') {
-        updateRes = await supabase
-          .from('transacciones')
-          .update({
-            categoria: editCategoria.trim(),
-            concepto: editConcepto.trim(),
-            monto
-          })
-          .eq('id', editTarget.id)
-      }
-    }
-
-    if (updateRes.error) {
-      console.error('Error al actualizar en Supabase:', updateRes.error)
-      showToast('Error: ' + (updateRes.error.message || 'No se pudo actualizar el movimiento.'))
+    if (updateError) {
+      console.error('Error al actualizar en Supabase:', updateError)
+      showToast('Error: ' + (updateError.message || 'No se pudo actualizar el movimiento.'))
       return
     }
 
@@ -1130,21 +1036,14 @@ export default function Finanzas() {
 
   function renderTable(data) {
     if (!data.length) {
-      return <tr className="empty-row"><td colSpan="8">No hay movimientos que coincidan con los filtros seleccionados.</td></tr>
+      return <tr className="empty-row"><td colSpan="7">No hay movimientos que coincidan con los filtros seleccionados.</td></tr>
     }
     return data.map(m => {
       const isIn = m.tipo === 'entrada'
-      const isSanMateo = m.establecimiento === 'San Mateo'
       return (
         <tr key={m.id} className={m.retirado ? 'row-retired' : ''}>
           <td>{formatDate(m.date)}</td>
           <td className="op-id">{m.folio}</td>
-          <td>
-            <span className={`branch-badge ${isSanMateo ? 'branch-san-mateo' : 'branch-plaza'}`}>
-              <span className="branch-dot"></span>
-              {m.establecimiento || 'Plaza'}
-            </span>
-          </td>
           <td>{m.concepto}</td>
           <td>
             <span className="cat-chip">
@@ -1258,14 +1157,6 @@ export default function Finanzas() {
             )}
           </div>
         </div>
-
-        <SelectDropdown
-          id={`${prefix}Establecimiento`}
-          label="Establecimiento"
-          value={filters.establecimiento}
-          options={ESTABLECIMIENTO_OPTIONS}
-          onChange={val => onFilterChange('establecimiento', val)}
-        />
 
         <SelectDropdown
           id={`${prefix}Type`}
@@ -1446,7 +1337,6 @@ export default function Finanzas() {
                 <tr>
                   <th>Fecha</th>
                   <th>ID</th>
-                  <th>Establecimiento</th>
                   <th>Concepto</th>
                   <th>Categoría</th>
                   <th>Tipo</th>
@@ -1490,7 +1380,6 @@ export default function Finanzas() {
                 <tr>
                   <th>Fecha</th>
                   <th>ID</th>
-                  <th>Establecimiento</th>
                   <th>Concepto</th>
                   <th>Categoría</th>
                   <th>Tipo</th>
@@ -1519,36 +1408,6 @@ export default function Finanzas() {
         </div>
 
         <div className="report-controls-bar">
-          <div className="report-control-group">
-            <span className="report-control-label">Filtrar por establecimiento</span>
-            <div className="report-branch-pills">
-              <button
-                type="button"
-                className={`report-branch-pill ${reportEstablecimiento === 'all' ? 'active' : ''}`}
-                onClick={() => setReportEstablecimiento('all')}
-              >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="report-pill-icon"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-                Todos
-              </button>
-              <button
-                type="button"
-                className={`report-branch-pill branch-pill-plaza ${reportEstablecimiento === 'Plaza' ? 'active' : ''}`}
-                onClick={() => setReportEstablecimiento('Plaza')}
-              >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="report-pill-icon"><path d="M3 21h18M3 7v14M21 7v14M6 7V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v3M9 11h6M9 15h6"/></svg>
-                Plaza
-              </button>
-              <button
-                type="button"
-                className={`report-branch-pill branch-pill-san-mateo ${reportEstablecimiento === 'San Mateo' ? 'active' : ''}`}
-                onClick={() => setReportEstablecimiento('San Mateo')}
-              >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="report-pill-icon"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-                San Mateo
-              </button>
-            </div>
-          </div>
-
           <div className="report-control-group">
             <span className="report-control-label">Periodo</span>
             <div className="report-periods">
@@ -1618,19 +1477,19 @@ export default function Finanzas() {
 
         {reportType === 'frecuencia' && (
           <div className="report-stack">
-            <ReportCard title="Categorías que más entran" items={reportFrecuencia.entrada} money={false} establecimiento={reportEstablecimiento} />
-            <ReportCard title="Categorías que más salen" items={reportFrecuencia.salida} money={false} establecimiento={reportEstablecimiento} />
+            <ReportCard title="Categorías que más entran" items={reportFrecuencia.entrada} money={false} />
+            <ReportCard title="Categorías que más salen" items={reportFrecuencia.salida} money={false} />
           </div>
         )}
 
         {reportType === 'montos' && (
           <div className="report-stack">
-            <ReportCard title="Categorías que más ingresos generaron" items={reportMontos.entrada} money establecimiento={reportEstablecimiento} />
-            <ReportCard title="Categorías que más gastos generaron" items={reportMontos.salida} money establecimiento={reportEstablecimiento} />
+            <ReportCard title="Categorías que más ingresos generaron" items={reportMontos.entrada} money />
+            <ReportCard title="Categorías que más gastos generaron" items={reportMontos.salida} money />
           </div>
         )}
 
-        {reportType === 'total' && <TotalesCard totales={reportTotales} establecimiento={reportEstablecimiento} />}
+        {reportType === 'total' && <TotalesCard totales={reportTotales} />}
       </div>
 
       {/* ── Menú contextual de fila ── */}
@@ -1677,25 +1536,6 @@ export default function Finanzas() {
               <input ref={montoRef} type="number" id="addMonto" name="monto" min="0.01" step="0.01" placeholder="0.00" required value={addForm.monto} onChange={handleAddChange} className={addErrors.monto ? 'invalid' : ''} />
               {addErrors.monto && <p className="form-error">{addErrors.monto}</p>}
             </div>
-            <fieldset className="form-group">
-              <legend>Establecimiento</legend>
-              <div className="radio-row">
-                <label className="radio-card">
-                  <input type="radio" name="establecimiento" value="Plaza" checked={addForm.establecimiento === 'Plaza'} onChange={handleAddChange} />
-                  <span className="branch-choice">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="branch-choice-icon"><path d="M3 21h18M3 7v14M21 7v14M6 7V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v3M9 11h6M9 15h6"/></svg>
-                    Plaza
-                  </span>
-                </label>
-                <label className="radio-card">
-                  <input type="radio" name="establecimiento" value="San Mateo" checked={addForm.establecimiento === 'San Mateo'} onChange={handleAddChange} />
-                  <span className="branch-choice">
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="branch-choice-icon"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-                    San Mateo
-                  </span>
-                </label>
-              </div>
-            </fieldset>
             <fieldset className="form-group">
               <legend>Tipo de movimiento</legend>
               <div className="radio-row">
@@ -1747,25 +1587,6 @@ export default function Finanzas() {
                   <input type="number" step="0.01" min="0" id="editMonto" value={editMonto} onChange={e => { setEditMonto(e.target.value); setEditErrors(prev => ({ ...prev, monto: '' })) }} className={editErrors.monto ? 'invalid' : ''} />
                   {editErrors.monto && <p className="form-error">{editErrors.monto}</p>}
                 </div>
-                <fieldset className="form-group">
-                  <legend>Establecimiento</legend>
-                  <div className="radio-row">
-                    <label className="radio-card">
-                      <input type="radio" name="editEstablecimiento" value="Plaza" checked={editEstablecimiento === 'Plaza'} onChange={e => setEditEstablecimiento(e.target.value)} />
-                      <span className="branch-choice">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="branch-choice-icon"><path d="M3 21h18M3 7v14M21 7v14M6 7V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v3M9 11h6M9 15h6"/></svg>
-                        Plaza
-                      </span>
-                    </label>
-                    <label className="radio-card">
-                      <input type="radio" name="editEstablecimiento" value="San Mateo" checked={editEstablecimiento === 'San Mateo'} onChange={e => setEditEstablecimiento(e.target.value)} />
-                      <span className="branch-choice">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="branch-choice-icon"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-                        San Mateo
-                      </span>
-                    </label>
-                  </div>
-                </fieldset>
                 <div className="form-row">
                   <label htmlFor="editCategoria">Categoría</label>
                   <input ref={editCategoriaRef} type="text" id="editCategoria" list="categorias-list" value={editCategoria} onChange={e => { setEditCategoria(e.target.value); setEditErrors(prev => ({ ...prev, categoria: '' })) }} className={editErrors.categoria ? 'invalid' : ''} />

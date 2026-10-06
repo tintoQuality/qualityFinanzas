@@ -1738,67 +1738,7 @@ body:has(.quality-login-viewport) {
   .report-card { padding: 20px 18px; }
 }
 
-/* ═══════════════════ Establecimientos (Plaza / San Mateo) ═══════════════════ */
-
-.branch-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
-  border-radius: 999px;
-  font-size: 0.76rem;
-  font-weight: 700;
-  letter-spacing: 0.01em;
-  white-space: nowrap;
-}
-
-.branch-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background-color: currentColor;
-  flex-shrink: 0;
-}
-
-.branch-plaza {
-  background: #eef2ff;
-  color: #4f46e5;
-  border: 1px solid #c7d2fe;
-}
-
-.branch-san-mateo {
-  background: #ecfdf5;
-  color: #059669;
-  border: 1px solid #a7f3d0;
-}
-
-.dark .branch-plaza {
-  background: rgba(99, 102, 241, 0.18);
-  color: #a5b4fc;
-  border-color: rgba(99, 102, 241, 0.35);
-}
-
-.dark .branch-san-mateo {
-  background: rgba(16, 185, 129, 0.18);
-  color: #6ee7b7;
-  border-color: rgba(16, 185, 129, 0.35);
-}
-
-.branch-choice {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-}
-
-.branch-choice-icon {
-  width: 16px;
-  height: 16px;
-  stroke: currentColor;
-  flex-shrink: 0;
-}
-
-/* ── Reportes: Controles de Filtros y Sucursales ── */
+/* ── Reportes: Barra de Controles y Periodos ── */
 
 .report-controls-bar {
   display: flex;
@@ -1824,70 +1764,6 @@ body:has(.quality-login-viewport) {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: var(--muted);
-}
-
-.report-branch-pills {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.report-branch-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  border: 1.5px solid var(--line);
-  background: var(--bg);
-  color: var(--muted);
-  font-family: inherit;
-  font-size: 0.8rem;
-  font-weight: 700;
-  padding: 7px 14px;
-  border-radius: 999px;
-  cursor: pointer;
-  box-shadow: var(--shadow-soft);
-  transition: all 0.15s ease;
-}
-
-.report-branch-pill:hover {
-  color: var(--ink);
-  border-color: #c9c3ff;
-  background: var(--card);
-}
-
-.report-branch-pill.active {
-  background: linear-gradient(135deg, #6d5cff, #5744f2);
-  color: #fff;
-  border-color: transparent;
-  box-shadow: 0 6px 16px rgba(109,92,255,0.3);
-}
-
-.report-branch-pill.branch-pill-plaza.active {
-  background: linear-gradient(135deg, #6366f1, #4f46e5);
-  box-shadow: 0 6px 16px rgba(79, 70, 229, 0.35);
-}
-
-.report-branch-pill.branch-pill-san-mateo.active {
-  background: linear-gradient(135deg, #10b981, #059669);
-  box-shadow: 0 6px 16px rgba(5, 150, 105, 0.35);
-}
-
-.report-pill-icon {
-  width: 14px;
-  height: 14px;
-  stroke: currentColor;
-}
-
-.report-branch-indicator {
-  display: inline-block;
-  margin-top: 4px;
-}
-
-.report-all-badge {
-  display: inline-block;
-  font-size: 0.74rem;
-  font-weight: 600;
   color: var(--muted);
 }
 

@@ -27,7 +27,6 @@ export async function GET(request) {
         monto: 0.01,
         categoria: 'Sistema',
         concepto: 'KeepAlive Auto-Ping',
-        establecimiento: 'Plaza',
         folio_visual: folio,
         id_usuario: userId,
         retirado: true
