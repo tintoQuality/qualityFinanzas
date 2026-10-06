@@ -44,14 +44,18 @@ NEXT_PUBLIC_SUPABASE_URL=https://xxx.supabase.co
 NEXT_PUBLIC_SUPABASE_ANON_KEY=sb_publishable_xxx
 ```
 
-### Tabla `usuarios`
+### Tabla `usuarios` (Cuentas independientes)
 
-| Columna   | Tipo    | Descripción                        |
-|-----------|---------|------------------------------------|
-| id        | uuid    | Identificador único del usuario    |
-| pin_hash  | text    | PIN de 4 dígitos (texto plano)     |
+| Columna   | Tipo      | Descripción                                   |
+|-----------|-----------|-----------------------------------------------|
+| id        | uuid      | Identificador único de la cuenta (UUID)       |
+| nombre    | text      | Nombre de la cuenta (ej. "Administrador", "Usuario 1") |
+| pin_hash  | text      | Código PIN único de acceso (4 dígitos)        |
+| rol       | text      | Rol asignado (`admin`, `usuario`)             |
+| activo    | boolean   | Estado de la cuenta (activo/inactivo)         |
+| creado_en | timestamp | Fecha de registro de la cuenta                |
 
-Se usa únicamente para el login. La app busca un registro cuyo `pin_hash` coincida con el PIN ingresado.
+Cada usuario posee un PIN único. Al iniciar sesión, el sistema carga exclusivamente los movimientos y estadísticas vinculados a su `id`.
 
 ### Tabla `transacciones`
 
@@ -64,59 +68,44 @@ Se usa únicamente para el login. La app busca un registro cuyo `pin_hash` coinc
 | categoria       | text      | Categoría del movimiento (ej. Alimentación)    |
 | tipo            | text      | `"Entrada"` o `"Salida"`                       |
 | monto           | numeric   | Cantidad monetaria                             |
-| id_usuario      | uuid      | FK → usuarios.id                               |
+| id_usuario      | uuid      | FK → usuarios.id (Aislamiento Multi-Tenant)    |
 | retirado        | boolean   | Si es `true`, el registro existe pero no se cuenta en saldos ni gráficas |
 
-> **Migraciones SQL:**
+> **Migraciones y Optimización Multi-Tenant:**
 > ```sql
-> ALTER TABLE transacciones ADD COLUMN IF NOT EXISTS retirado boolean DEFAULT false;
+> -- Ver archivo supabase_multitenant_setup.sql
+> CREATE INDEX IF NOT EXISTS idx_transacciones_id_usuario ON transacciones(id_usuario);
 > ```
 
 ---
 
-## Flujo de la aplicación
+## Flujo de la aplicación (Multi-Tenant)
 
-### 1. Login (PIN)
+### 1. Login y Sesión por Cuenta
 
 ```
-Usuario ingresa PIN → page.js consulta tabla "usuarios"
-  → Si coincide pin_hash: guarda id en localStorage, redirige a /finanzas
-  → Si no coincide: muestra error
+Usuario ingresa PIN → page.js consulta tabla "usuarios" donde pin_hash = PIN
+  → Si coincide:
+      - Almacena en localStorage: usuario_id, usuario_nombre, usuario_rol
+      - Redirige a /finanzas
+  → Si no coincide: muestra error de credenciales
 ```
 
-El `usuario_id` se almacena en `localStorage` y se usa al momento de insertar transacciones para vincularlas al usuario.
-
-### 2. Carga de datos (al abrir /finanzas)
+### 2. Carga de datos aislada por cuenta (/finanzas)
 
 ```
 Montaje del componente Finanzas
-  → useEffect dispara load()
-  → supabase.from('transacciones').select('*').order('creado_en', { ascending: false })
-  → Cada fila se transforma con mapRow() a un objeto normalizado:
-      { id, folio, date, concepto, categoria, tipo, amount, retirado }
-  → Se guarda en el estado movements (useState)
+  → Obtiene usuario_id de la sesión activa
+  → supabase.from('transacciones').select('*').eq('id_usuario', userId).order('creado_en', { ascending: false })
+  → Los saldos, gráficas de dona, categorías sugeridas, reportes y exportaciones se calculan ÚNICAMENTE con los datos del usuario activo
 ```
 
-La función `reload()` hace la misma consulta y se llama después de cada insert, update o retire para refrescar los datos.
-
-### 3. Registro de un movimiento (modal "Generar un movimiento")
+### 3. Registro y modificación de movimientos
 
 ```
-1. Usuario abre el modal → formulario controlado por estado addForm
-2. Selecciona: tipo (entrada/salida), monto, categoría, concepto
-3. Al enviar (handleAddSubmit):
-   a. Validación en cliente (monto > 0, categoría y concepto requeridos)
-   b. Se obtiene usuario_id de localStorage
-   c. Insert a Supabase:
-      supabase.from('transacciones').insert([{
-        tipo, monto, categoria, concepto,
-        id_usuario, folio_visual: 'FOL-' + timestamp,
-        retirado: false
-      }])
-   d. Si hay error → toast de error
-   e. Si éxito → closeAddModal(), showToast(), await reload()
-4. reload() vuelve a consultar todo → estado movements se actualiza
-5. React re-renderiza tabla y gráfica automáticamente
+1. Usuario abre el modal → formulario controlado por addForm
+2. Al guardar: inserta la transacción con id_usuario: userId de la sesión
+3. Al editar o eliminar: incluye filtro .eq('id_usuario', userId) para máxima seguridad y aislamiento
 ```
 
 ### 4. Consulta y visualización del historial

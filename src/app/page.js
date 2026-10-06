@@ -44,8 +44,10 @@ export default function LoginPage() {
         return
       }
 
-      // Guardar sesión y redirigir
+      // Guardar sesión multi-cuenta y redirigir
       localStorage.setItem('usuario_id', usuario.id)
+      localStorage.setItem('usuario_nombre', usuario.nombre || 'Usuario')
+      localStorage.setItem('usuario_rol', usuario.rol || 'usuario')
       router.push('/finanzas')
     } catch (err) {
       console.error(err)

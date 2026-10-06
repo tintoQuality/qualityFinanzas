@@ -454,26 +454,43 @@ export default function Finanzas() {
   const montoRef = useRef(null)
   const editCategoriaRef = useRef(null)
 
-  /* ── Sesión ── */
+  const [currentUser, setCurrentUser] = useState({ id: '', nombre: '', rol: '' })
+
+  /* ── Sesión Multi-Cuenta ── */
 
   useEffect(() => {
-    if (!localStorage.getItem('usuario_id')) {
+    const uid = localStorage.getItem('usuario_id')
+    if (!uid) {
       router.replace('/')
+      return
     }
+    setCurrentUser({
+      id: uid,
+      nombre: localStorage.getItem('usuario_nombre') || 'Usuario',
+      rol: localStorage.getItem('usuario_rol') || 'usuario',
+    })
   }, [router])
 
   function handleLogout() {
     localStorage.removeItem('usuario_id')
+    localStorage.removeItem('usuario_nombre')
+    localStorage.removeItem('usuario_rol')
     router.replace('/')
   }
 
-  /* ── Supabase ── */
+  /* ── Supabase (Aislamiento por usuario / Multi-Tenant) ── */
 
   async function reload() {
     setLoadError(false)
+    const uid = localStorage.getItem('usuario_id')
+    if (!uid) {
+      router.replace('/')
+      return
+    }
     const { data, error } = await supabase
       .from('transacciones')
       .select('*')
+      .eq('id_usuario', uid)
       .order('creado_en', { ascending: false })
     if (error) { setLoadError(true); setLoading(false); return }
     setMovements(data.map(mapRow))
@@ -483,9 +500,15 @@ export default function Finanzas() {
   useEffect(() => {
     let active = true
     async function load() {
+      const uid = localStorage.getItem('usuario_id')
+      if (!uid) {
+        router.replace('/')
+        return
+      }
       const { data, error } = await supabase
         .from('transacciones')
         .select('*')
+        .eq('id_usuario', uid)
         .order('creado_en', { ascending: false })
       if (!active) return
       if (error) { setLoadError(true); setLoading(false); return }
@@ -494,7 +517,7 @@ export default function Finanzas() {
     }
     load()
     return () => { active = false }
-  }, [])
+  }, [router])
 
   /* ── Datos derivados ── */
 
@@ -791,7 +814,9 @@ export default function Finanzas() {
           </tr>
           <tr style="background-color:#f1f5f9;">
             <td style="font-weight:bold; color:#475569; width:130px;">Periodo:</td>
-            <td colspan="5" style="font-weight:bold; color:#0f172a;">${periodDesc}</td>
+            <td colspan="2" style="font-weight:bold; color:#0f172a;">${periodDesc}</td>
+            <td style="font-weight:bold; color:#475569; width:130px;">Usuario / Cuenta:</td>
+            <td colspan="2" style="font-weight:bold; color:#0f172a;">${currentUser.nombre || 'Usuario'}</td>
           </tr>
           <tr style="background-color:#f8fafc;">
             <td style="font-weight:bold; color:#475569;">Fecha de emisión:</td>
@@ -960,6 +985,9 @@ export default function Finanzas() {
     if (Object.keys(errs).length > 0) { setEditErrors(errs); return }
     if (!editTarget) return
 
+    const userId = localStorage.getItem('usuario_id')
+    if (!userId) { showToast('Sesión inválida. Vuelve a iniciar sesión.'); return }
+
     const { error: updateError } = await supabase
       .from('transacciones')
       .update({
@@ -968,6 +996,7 @@ export default function Finanzas() {
         monto
       })
       .eq('id', editTarget.id)
+      .eq('id_usuario', userId)
 
     if (updateError) {
       console.error('Error al actualizar en Supabase:', updateError)
@@ -993,10 +1022,14 @@ export default function Finanzas() {
     const id = confirmTarget
     setConfirmTarget(null)
 
+    const userId = localStorage.getItem('usuario_id')
+    if (!userId) { showToast('Sesión inválida. Vuelve a iniciar sesión.'); return }
+
     const { error } = await supabase
       .from('transacciones')
       .delete()
       .eq('id', id)
+      .eq('id_usuario', userId)
 
     if (error) { showToast('No se pudo eliminar el movimiento.'); return }
 
@@ -1196,6 +1229,19 @@ export default function Finanzas() {
             </span>
             <button className="drawer-close" onClick={() => setDrawerOpen(false)} aria-label="Cerrar menú">&times;</button>
           </div>
+
+          <div className="drawer-user-card">
+            <div className="drawer-user-avatar">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+              </svg>
+            </div>
+            <div className="drawer-user-info">
+              <span className="drawer-user-name">{currentUser.nombre || 'Mi Cuenta'}</span>
+              <span className="drawer-user-badge">{currentUser.rol === 'admin' ? 'Administrador' : 'Cuenta Activa'}</span>
+            </div>
+          </div>
+
           <ul className="drawer-nav">
             <li>
               <a
@@ -1254,9 +1300,19 @@ export default function Finanzas() {
           <h1 className="app-title">Finanzas</h1>
           <p className="app-subtitle">{VIEW_SUBTITLES[currentView]}</p>
         </div>
-        <div className="balance-pill">
-          <span className="balance-label">Saldo</span>
-          <span className="balance-value">${formatMoney(balance)}</span>
+        <div className="header-account-group">
+          <div className="account-user-pill" title={`Cuenta activa: ${currentUser.nombre} (${currentUser.rol})`}>
+            <span className="account-user-avatar">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ width:14, height:14 }}>
+                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
+              </svg>
+            </span>
+            <span className="account-user-name">{currentUser.nombre || 'Usuario'}</span>
+          </div>
+          <div className="balance-pill">
+            <span className="balance-label">Saldo</span>
+            <span className="balance-value">${formatMoney(balance)}</span>
+          </div>
         </div>
       </header>
 

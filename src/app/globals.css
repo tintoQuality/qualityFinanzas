@@ -470,6 +470,60 @@ body:has(.quality-login-viewport) {
 
 .drawer-close:hover { background: var(--red-bg); color: var(--red); }
 
+/* ── Multi-Cuenta: Perfil en Drawer ── */
+.drawer-user-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  margin: 12px 14px 4px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+
+.drawer-user-avatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #6366f1, #4f46e5);
+  color: #ffffff;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+
+.drawer-user-avatar svg {
+  width: 18px;
+  height: 18px;
+}
+
+.drawer-user-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.drawer-user-name {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.drawer-user-badge {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #059669;
+  text-transform: capitalize;
+}
+
+.dark .drawer-user-badge {
+  color: #34d399;
+}
+
 .drawer-nav {
   list-style: none;
   margin: 0;
@@ -563,8 +617,46 @@ body:has(.quality-login-viewport) {
   font-weight: 500;
 }
 
-.balance-pill {
+.header-account-group {
   margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.account-user-pill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--card);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 8px 14px;
+  box-shadow: var(--shadow-soft);
+}
+
+.account-user-avatar {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgba(99, 102, 241, 0.12);
+  color: var(--violet);
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+
+.account-user-name {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--ink);
+  max-width: 140px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.balance-pill {
   display: flex;
   flex-direction: column;
   align-items: flex-end;
@@ -573,6 +665,15 @@ body:has(.quality-login-viewport) {
   border-radius: 16px;
   padding: 10px 20px;
   box-shadow: var(--shadow-soft);
+}
+
+@media (max-width: 640px) {
+  .account-user-name {
+    display: none;
+  }
+  .account-user-pill {
+    padding: 8px;
+  }
 }
 
 .balance-label {
