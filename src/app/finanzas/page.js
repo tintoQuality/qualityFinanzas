@@ -1125,7 +1125,7 @@ export default function Finanzas() {
           }}
         />
 
-        <div className="filter-item">
+        <div className="filter-item filter-item-daterange">
           <label className="filter-item-label" htmlFor={`${prefix}StartDate`}>Seleccionar Periodo</label>
           <div className="date-range-box">
             <svg className="date-range-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

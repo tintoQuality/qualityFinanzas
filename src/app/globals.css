@@ -39,10 +39,12 @@ body {
   color: var(--ink);
   font-family: var(--font-plus-jakarta-sans), "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
   min-height: 100vh;
   display: flex;
   justify-content: center;
   transition: background 0.3s ease, color 0.3s ease;
+  overflow-x: hidden;
 }
 
 body:has(.quality-login-viewport) {
@@ -665,15 +667,6 @@ body:has(.quality-login-viewport) {
   border-radius: 16px;
   padding: 10px 20px;
   box-shadow: var(--shadow-soft);
-}
-
-@media (max-width: 640px) {
-  .account-user-name {
-    display: none;
-  }
-  .account-user-pill {
-    padding: 8px;
-  }
 }
 
 .balance-label {
@@ -1543,17 +1536,6 @@ body:has(.quality-login-viewport) {
 
 .toast.show { opacity: 1; transform: translate(-50%, 0); }
 
-/* ═══════════════════ Responsivo ═══════════════════ */
-
-@media (max-width: 760px) {
-  .overview-grid { flex-direction: column; gap: 28px; }
-  .app-header { gap: 10px; }
-  .balance-pill { padding: 8px 14px; }
-  .balance-value { font-size: 1.05rem; }
-  .filter-bar { gap: 12px; }
-  .radio-row { grid-template-columns: 1fr; }
-}
-
 /* ── Dark mode overrides for hardcoded colors ── */
 
 .dark .row-retired { background: #1c1517 !important; }
@@ -1606,6 +1588,8 @@ body:has(.quality-login-viewport) {
   box-shadow: 0 8px 18px rgba(109,92,255,0.3);
 }
 
+.dark .report-tab.active { box-shadow: 0 8px 18px rgba(0,0,0,0.35); }
+
 .report-stack {
   display: flex;
   flex-direction: column;
@@ -1648,13 +1632,40 @@ body:has(.quality-login-viewport) {
   font-weight: 700;
 }
 
-.dark .report-tab.active { box-shadow: 0 8px 18px rgba(0,0,0,0.35); }
+/* ── Reportes: Barra de Controles y Periodos ── */
+
+.report-controls-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 22px;
+  padding: 16px 20px;
+  background: var(--card);
+  border: 1.5px solid var(--line);
+  border-radius: 16px;
+  box-shadow: var(--shadow-soft);
+}
+
+.report-control-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.report-control-label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
 
 .report-periods {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin-bottom: 22px;
 }
 
 .report-period {
@@ -1681,6 +1692,60 @@ body:has(.quality-login-viewport) {
 }
 
 .dark .report-period.active { box-shadow: 0 8px 18px rgba(0,0,0,0.35); }
+
+/* ── Botón Exportar Reporte a Excel ── */
+
+.report-export-action {
+  margin-left: auto;
+  align-self: flex-end;
+}
+
+.btn-export-excel {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: #ffffff;
+  border: none;
+  font-family: inherit;
+  font-size: 0.84rem;
+  font-weight: 700;
+  padding: 9px 18px;
+  border-radius: 12px;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(16, 185, 129, 0.28);
+  transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
+  white-space: nowrap;
+}
+
+.btn-export-excel:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgba(16, 185, 129, 0.38);
+  filter: brightness(1.05);
+}
+
+.btn-export-excel:active {
+  transform: translateY(0);
+}
+
+.btn-export-excel:focus-visible {
+  outline: 3px solid rgba(16, 185, 129, 0.4);
+  outline-offset: 2px;
+}
+
+.excel-btn-icon {
+  width: 16px;
+  height: 16px;
+  stroke: currentColor;
+  flex-shrink: 0;
+}
+
+.dark .btn-export-excel {
+  background: linear-gradient(135deg, #059669, #047857);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+}
+
+/* ── Barra de fecha personalizada en reportes ── */
 
 .report-date-bar {
   display: flex;
@@ -1833,109 +1898,565 @@ body:has(.quality-login-viewport) {
 
 .btn-danger:hover { box-shadow: 0 10px 22px rgba(220,38,38,0.4); }
 
-@media (max-width: 760px) {
-  .report-grid { flex-direction: column; gap: 20px; }
-  .report-card-header { flex-direction: column; align-items: flex-start; gap: 8px; }
-  .report-card { padding: 20px 18px; }
-}
+/* ══════════════════════════════════════════════════════════════
+   SISTEMA DE DISEÑO RESPONSIVO (TABLETS Y SMARTPHONES)
+   ══════════════════════════════════════════════════════════════ */
 
-/* ── Reportes: Barra de Controles y Periodos ── */
+/* ── Tablets y pantallas medianas (<= 768px) ── */
+@media (max-width: 768px) {
+  body {
+    padding: 16px 12px 48px;
+  }
 
-.report-controls-bar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: flex-start;
-  gap: 20px;
-  margin-bottom: 22px;
-  padding: 16px 20px;
-  background: var(--card);
-  border: 1.5px solid var(--line);
-  border-radius: 16px;
-  box-shadow: var(--shadow-soft);
-}
+  .app-header {
+    gap: 10px;
+    margin-bottom: 20px;
+  }
 
-.report-control-group {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
+  .app-title {
+    font-size: 1.35rem;
+  }
 
-.report-control-label {
-  font-size: 0.72rem;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--muted);
-}
+  .app-subtitle {
+    font-size: 0.8rem;
+  }
 
-@media (max-width: 760px) {
+  .header-account-group {
+    gap: 8px;
+  }
+
+  .account-user-pill {
+    padding: 6px 10px;
+    gap: 6px;
+  }
+
+  .account-user-name {
+    max-width: 90px;
+    font-size: 0.78rem;
+  }
+
+  .balance-pill {
+    padding: 7px 14px;
+    border-radius: 12px;
+  }
+
+  .balance-label {
+    font-size: 0.65rem;
+  }
+
+  .balance-value {
+    font-size: 1rem;
+  }
+
+  /* Overview Card & Donut */
+  .overview-card {
+    padding: 20px 16px 22px;
+    border-radius: 18px;
+    margin-bottom: 16px;
+  }
+
+  .overview-top {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+    margin-bottom: 18px;
+  }
+
+  .overview-title {
+    font-size: 1.2rem;
+  }
+
+  .chart-toggle {
+    display: flex;
+    width: 100%;
+    padding: 4px;
+    border-radius: 14px;
+  }
+
+  .toggle-btn {
+    flex: 1;
+    text-align: center;
+    padding: 8px 12px;
+    font-size: 0.82rem;
+    border-radius: 10px;
+  }
+
+  .overview-grid {
+    flex-direction: column;
+    gap: 22px;
+    align-items: center;
+    width: 100%;
+  }
+
+  .chart-side {
+    width: 100%;
+    align-items: center;
+  }
+
+  .donut {
+    width: 190px;
+    height: 190px;
+  }
+
+  .donut-value {
+    font-size: 1.35rem;
+  }
+
+  .donut-label {
+    font-size: 0.76rem;
+  }
+
+  .chart-caption {
+    font-size: 0.76rem;
+    margin-top: 10px;
+    text-align: center;
+  }
+
+  .cats-side {
+    width: 100%;
+  }
+
+  .cats-title {
+    font-size: 0.95rem;
+    margin-bottom: 14px;
+    text-align: center;
+  }
+
+  .category-list {
+    gap: 12px;
+  }
+
+  .category-item {
+    grid-template-columns: auto minmax(60px, 1.2fr) 2fr auto;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .cat-name {
+    font-size: 0.82rem;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .cat-bar {
+    height: 7px;
+  }
+
+  .cat-value {
+    font-size: 0.82rem;
+    min-width: 30px;
+  }
+
+  /* Botón de acción principal */
+  .action-btn-full {
+    padding: 14px 18px;
+    font-size: 0.92rem;
+    border-radius: 14px;
+    margin-bottom: 16px;
+    min-height: 48px;
+  }
+
+  /* Barra de filtros (Grid 2 columnas en móvil) */
+  .filter-bar {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+    padding: 0 0 14px;
+    margin-bottom: 12px;
+    width: 100%;
+  }
+
+  .filter-item {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .filter-item-daterange {
+    grid-column: 1 / -1;
+    width: 100%;
+  }
+
+  .custom-select-btn {
+    width: 100%;
+    min-width: 0;
+    padding: 9px 12px;
+    font-size: 0.82rem;
+    border-radius: 12px;
+    min-height: 42px;
+    box-sizing: border-box;
+  }
+
+  .custom-select-btn span {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .custom-select-dropdown {
+    width: 100%;
+    min-width: 100%;
+    max-height: 240px;
+    overflow-y: auto;
+    z-index: 75;
+    border-radius: 14px;
+  }
+
+  .date-range-box {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 4px;
+    padding: 5px 10px;
+    border-radius: 12px;
+    min-height: 42px;
+    box-sizing: border-box;
+  }
+
+  .date-range-input {
+    flex: 1;
+    min-width: 0;
+    width: 100%;
+    font-size: 0.78rem;
+    padding: 4px 2px;
+    text-align: center;
+  }
+
+  .date-range-sep {
+    font-size: 0.75rem;
+    padding: 0 2px;
+    flex-shrink: 0;
+  }
+
+  .date-range-clear {
+    font-size: 1.15rem;
+    padding: 2px 6px;
+    flex-shrink: 0;
+  }
+
+  /* Operations Card & Table */
+  .operations-card {
+    padding: 16px 14px 10px;
+    border-radius: 18px;
+    margin-bottom: 16px;
+  }
+
+  .operations-header {
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+
+  .operations-title {
+    font-size: 1rem;
+  }
+
+  .count-badge {
+    font-size: 0.72rem;
+    padding: 4px 10px;
+  }
+
+  .header-actions {
+    gap: 6px;
+  }
+
+  .icon-btn {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+  }
+
+  .table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+    margin: 0 -4px;
+    padding: 0 4px 6px;
+  }
+
+  .operations-table {
+    min-width: 580px;
+  }
+
+  .operations-table th {
+    padding: 8px 10px;
+    font-size: 0.7rem;
+  }
+
+  .operations-table td {
+    padding: 11px 10px;
+    font-size: 0.84rem;
+  }
+
+  /* Reportes en tablet / móvil */
   .report-controls-bar {
     flex-direction: column;
-    gap: 16px;
+    align-items: stretch;
+    gap: 14px;
+    padding: 14px 16px;
+    border-radius: 16px;
+    margin-bottom: 16px;
   }
-}
 
-/* ── Botón Exportar Reporte a Excel ── */
+  .report-control-group {
+    width: 100%;
+    gap: 6px;
+  }
 
-.report-export-action {
-  margin-left: auto;
-  align-self: flex-end;
-}
+  .report-control-label {
+    font-size: 0.7rem;
+  }
 
-.btn-export-excel {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  background: linear-gradient(135deg, #10b981, #059669);
-  color: #ffffff;
-  border: none;
-  font-family: inherit;
-  font-size: 0.82rem;
-  font-weight: 700;
-  padding: 8px 16px;
-  border-radius: 12px;
-  cursor: pointer;
-  box-shadow: 0 4px 14px rgba(16, 185, 129, 0.28);
-  transition: transform 0.15s ease, box-shadow 0.15s ease, filter 0.15s ease;
-  white-space: nowrap;
-}
+  .report-periods {
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+    gap: 8px;
+    padding: 2px 2px 6px 2px;
+    margin-bottom: 0;
+  }
 
-.btn-export-excel:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 6px 18px rgba(16, 185, 129, 0.38);
-  filter: brightness(1.05);
-}
+  .report-periods::-webkit-scrollbar {
+    display: none;
+  }
 
-.btn-export-excel:active {
-  transform: translateY(0);
-}
+  .report-period {
+    flex: 0 0 auto;
+    white-space: nowrap;
+    padding: 7px 15px;
+    font-size: 0.78rem;
+    font-weight: 700;
+    border-radius: 999px;
+  }
 
-.btn-export-excel:focus-visible {
-  outline: 3px solid rgba(16, 185, 129, 0.4);
-  outline-offset: 2px;
-}
-
-.excel-btn-icon {
-  width: 16px;
-  height: 16px;
-  stroke: currentColor;
-  flex-shrink: 0;
-}
-
-.dark .btn-export-excel {
-  background: linear-gradient(135deg, #059669, #047857);
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
-}
-
-@media (max-width: 760px) {
   .report-export-action {
     margin-left: 0;
     width: 100%;
+    align-self: stretch;
+    padding-top: 12px;
+    border-top: 1px dashed var(--line);
   }
+
   .btn-export-excel {
     width: 100%;
     justify-content: center;
-    padding: 11px 16px;
+    padding: 12px 16px;
+    font-size: 0.88rem;
+    min-height: 46px;
+    border-radius: 12px;
+  }
+
+  .report-card {
+    padding: 18px 14px;
+    border-radius: 18px;
+  }
+
+  .report-card-header {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+
+  .report-grid {
+    flex-direction: column;
+    gap: 20px;
+    align-items: center;
+    width: 100%;
+  }
+
+  .report-table-wrap {
+    width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .report-table {
+    min-width: 260px;
+    width: 100%;
+  }
+
+  .report-net {
+    text-align: center;
+    font-size: 0.84rem;
+    margin: 12px 0 0;
+  }
+
+  /* Modales en móvil */
+  .modal-overlay {
+    padding: 12px;
+  }
+
+  .modal-card {
+    padding: 22px 18px 20px;
+    border-radius: 22px;
+    max-height: calc(100dvh - 24px);
+    width: 100%;
+  }
+
+  .form-row input,
+  .form-row textarea {
+    font-size: 16px; /* Evita zoom automático en Safari iOS */
+    padding: 11px 12px;
+    border-radius: 12px;
+  }
+
+  .radio-row {
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .radio-card span {
+    padding: 10px 12px;
+    font-size: 0.85rem;
+    border-radius: 10px;
+  }
+
+  .modal-actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    width: 100%;
+    margin-top: 8px;
+  }
+
+  .modal-actions .btn {
+    width: 100%;
+    text-align: center;
+    padding: 12px 14px;
+    font-size: 0.88rem;
+  }
+}
+
+/* ── Pantallas de teléfonos estándar (<= 640px) ── */
+@media (max-width: 640px) {
+  body {
+    padding: 12px 10px 42px;
+  }
+
+  .app-header {
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+
+  .app-title {
+    font-size: 1.25rem;
+  }
+
+  .app-subtitle {
+    font-size: 0.76rem;
+  }
+
+  .account-user-name {
+    display: none;
+  }
+
+  .account-user-pill {
+    padding: 7px;
+    border-radius: 50%;
+  }
+
+  .balance-pill {
+    padding: 6px 10px;
+    border-radius: 10px;
+  }
+
+  .balance-label {
+    font-size: 0.58rem;
+  }
+
+  .balance-value {
+    font-size: 0.9rem;
+  }
+
+  .report-tabs {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+
+  .report-tab {
+    width: 100%;
+    text-align: center;
+    padding: 10px 12px;
+    font-size: 0.82rem;
+    border-radius: 12px;
+  }
+
+  .report-date-bar {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    padding: 14px 12px;
+    border-radius: 16px;
+    margin-bottom: 16px;
+  }
+
+  .report-date-bar .filter-item {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .report-date-bar .date-range-input {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 8px 8px;
+    background: var(--bg);
+    border: 1.5px solid var(--line);
+    border-radius: 10px;
+    font-size: 0.78rem;
+  }
+
+  .report-date-bar button.btn-ghost {
+    grid-column: 1 / -1;
+    width: 100%;
+    justify-content: center;
+    text-align: center;
+    padding: 10px;
+  }
+
+  .report-date-summary {
+    grid-column: 1 / -1;
+    margin-left: 0;
+    text-align: center;
+    font-size: 0.78rem;
+    padding-top: 4px;
+  }
+}
+
+/* ── Pantallas de teléfonos pequeños (<= 440px) ── */
+@media (max-width: 440px) {
+  .filter-bar {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .custom-select-btn {
+    padding: 10px 14px;
+    font-size: 0.84rem;
+  }
+
+  .operations-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .header-actions {
+    margin-left: 0;
+    justify-content: flex-end;
+  }
+
+  .report-date-bar {
+    grid-template-columns: 1fr;
+    gap: 10px;
   }
 }
 
