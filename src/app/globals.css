@@ -912,49 +912,77 @@ body:has(.quality-login-viewport) {
 /* ═══════════════════ Operaciones ═══════════════════ */
 
 .operations-card {
-  background: var(--card);
-  border-radius: var(--radius-card);
-  box-shadow: var(--shadow-card);
-  border: 1px solid var(--line);
-  padding: 24px 28px 12px;
-  margin-bottom: 20px;
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-radius: 24px;
+  box-shadow: 
+    0 20px 45px -10px rgba(20, 26, 56, 0.07),
+    0 10px 20px -5px rgba(20, 26, 56, 0.04),
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  padding: 28px 30px 16px;
+  margin-bottom: 24px;
+  position: relative;
+  transition: background 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+.dark .operations-card {
+  background: rgba(24, 31, 61, 0.72);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  box-shadow: 
+    0 25px 60px -15px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
 }
 
 .operations-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 16px;
+  gap: 14px;
+  margin-bottom: 20px;
 }
 
 .operations-title {
   margin: 0;
-  font-size: 1.1rem;
+  font-size: 1.25rem;
   font-weight: 800;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.025em;
+  color: var(--ink);
 }
 
 .count-badge {
-  background: var(--bg);
-  border: 1px solid var(--line);
+  background: rgba(100, 116, 139, 0.08);
+  border: 1px solid rgba(100, 116, 139, 0.15);
   color: var(--muted);
-  font-size: 0.76rem;
+  font-size: 0.74rem;
   font-weight: 700;
+  letter-spacing: 0.02em;
   padding: 6px 14px;
   border-radius: 999px;
+  backdrop-filter: blur(8px);
 }
 
-/* ── Filtros (Selects llamativos y rango de fechas) ── */
+.dark .count-badge {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.1);
+  color: #94a3b8;
+}
+
+/* ── Panel de Filtros (Liquid Glass & Grid Dashboard) ── */
 
 .filter-bar {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
   align-items: flex-end;
-  gap: 14px;
-  padding: 0 0 18px;
+  padding: 0 0 20px;
   border-bottom: 1px solid var(--line);
-  margin-bottom: 12px;
+  margin-bottom: 16px;
+  width: 100%;
 }
 
 .filter-item {
@@ -962,6 +990,11 @@ body:has(.quality-login-viewport) {
   flex-direction: column;
   gap: 6px;
   position: relative;
+  min-width: 0;
+}
+
+.filter-item-daterange {
+  grid-column: span 2;
 }
 
 .filter-item label,
@@ -970,7 +1003,13 @@ body:has(.quality-login-viewport) {
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: var(--muted);
+  color: #64748b;
+  margin-bottom: 2px;
+}
+
+.dark .filter-item label,
+.dark .filter-item-label {
+  color: #94a3b8;
 }
 
 .custom-select-btn {
@@ -979,32 +1018,57 @@ body:has(.quality-login-viewport) {
   justify-content: space-between;
   gap: 10px;
   font-family: inherit;
-  font-size: 0.86rem;
+  font-size: 0.88rem;
   font-weight: 600;
-  color: var(--ink);
-  background: var(--bg);
-  border: 1.5px solid var(--line);
-  border-radius: 12px;
-  padding: 9px 14px;
+  color: #0f172a;
+  background: rgba(255, 255, 255, 0.65);
+  border: 1.5px solid rgba(216, 222, 238, 0.8);
+  border-radius: 14px;
+  padding: 10px 16px;
   cursor: pointer;
-  min-width: 140px;
-  transition: all 0.18s ease;
+  min-height: 44px;
+  width: 100%;
+  box-sizing: border-box;
+  box-shadow: 0 2px 6px rgba(20, 26, 56, 0.03);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.dark .custom-select-btn {
+  background: rgba(15, 23, 42, 0.45);
+  border-color: rgba(255, 255, 255, 0.1);
+  color: #f8fafc;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
 .custom-select-btn:hover {
-  border-color: #b4acff;
-  box-shadow: 0 4px 14px rgba(109,92,255,0.12);
+  background: rgba(255, 255, 255, 0.95);
+  border-color: #a5b4fc;
+  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.12);
+  transform: translateY(-1px);
+}
+
+.dark .custom-select-btn:hover {
+  background: rgba(30, 41, 59, 0.7);
+  border-color: rgba(99, 102, 241, 0.5);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
 }
 
 .custom-select-btn.active {
   border-color: var(--violet);
-  box-shadow: 0 0 0 3px rgba(109,92,255,0.15);
+  background: #ffffff;
+  box-shadow: 0 0 0 4px rgba(109, 92, 255, 0.14);
+}
+
+.dark .custom-select-btn.active {
+  background: rgba(30, 41, 59, 0.9);
+  border-color: #818cf8;
+  box-shadow: 0 0 0 4px rgba(129, 140, 248, 0.2);
 }
 
 .custom-select-arrow {
-  width: 13px;
-  height: 13px;
-  stroke: var(--muted);
+  width: 14px;
+  height: 14px;
+  stroke: #64748b;
   transition: transform 0.2s ease, stroke 0.2s ease;
   flex-shrink: 0;
 }
@@ -1016,19 +1080,33 @@ body:has(.quality-login-viewport) {
 
 .custom-select-dropdown {
   position: absolute;
-  top: calc(100% + 6px);
+  top: calc(100% + 8px);
   left: 0;
-  z-index: 50;
+  right: 0;
+  z-index: 90;
   min-width: 200px;
-  background: var(--card);
-  border: 1.5px solid var(--line);
-  border-radius: 14px;
-  box-shadow: 0 16px 40px rgba(20,26,56,0.18);
+  background: rgba(255, 255, 255, 0.95);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.85);
+  border-radius: 16px;
+  box-shadow: 
+    0 20px 45px -10px rgba(20, 26, 56, 0.16),
+    0 8px 16px -4px rgba(20, 26, 56, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 1);
   padding: 6px;
   display: flex;
   flex-direction: column;
   gap: 3px;
-  animation: dropdownFadeIn 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+  animation: dropdownFadeIn 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.dark .custom-select-dropdown {
+  background: rgba(24, 31, 61, 0.95);
+  border-color: rgba(255, 255, 255, 0.1);
+  box-shadow: 
+    0 24px 50px -10px rgba(0, 0, 0, 0.6),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
 }
 
 .custom-select-option {
@@ -1036,29 +1114,28 @@ body:has(.quality-login-viewport) {
   align-items: center;
   justify-content: space-between;
   width: 100%;
-  padding: 9px 12px;
+  padding: 10px 14px;
   border: none;
   background: transparent;
   color: var(--ink);
   font-family: inherit;
-  font-size: 0.84rem;
+  font-size: 0.85rem;
   font-weight: 600;
-  border-radius: 9px;
+  border-radius: 10px;
   cursor: pointer;
   text-align: left;
   transition: all 0.15s ease;
 }
 
-/* Efecto hover: mismo gradiente/azul del botón generar movimiento */
 .custom-select-option:hover {
   background: linear-gradient(135deg, #6d5cff, #5744f2) !important;
   color: #ffffff !important;
-  box-shadow: 0 4px 12px rgba(109,92,255,0.28);
-  transform: translateX(2px);
+  box-shadow: 0 4px 14px rgba(109, 92, 255, 0.3);
+  transform: translateX(3px);
 }
 
 .custom-select-option.selected {
-  background: rgba(109,92,255,0.1);
+  background: rgba(109, 92, 255, 0.1);
   color: var(--violet);
   font-weight: 700;
 }
@@ -1074,62 +1151,102 @@ body:has(.quality-login-viewport) {
   flex-shrink: 0;
 }
 
-/* ── Seleccionar Periodo (Calendario Rango) ── */
+/* ── Seleccionar Periodo (Calendario Rango Liquid Glass) ── */
 
 .date-range-box {
-  display: inline-flex;
+  display: flex;
   align-items: center;
-  gap: 6px;
-  background: var(--bg);
-  border: 1.5px solid var(--line);
-  border-radius: 12px;
-  padding: 4px 10px;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  justify-content: space-between;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.65);
+  border: 1.5px solid rgba(216, 222, 238, 0.8);
+  border-radius: 14px;
+  padding: 6px 14px;
+  min-height: 44px;
+  width: 100%;
+  box-sizing: border-box;
+  box-shadow: 0 2px 6px rgba(20, 26, 56, 0.03);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.date-range-box:hover,
+.dark .date-range-box {
+  background: rgba(15, 23, 42, 0.45);
+  border-color: rgba(255, 255, 255, 0.1);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.date-range-box:hover {
+  background: rgba(255, 255, 255, 0.95);
+  border-color: #a5b4fc;
+  box-shadow: 0 4px 14px rgba(99, 102, 241, 0.12);
+  transform: translateY(-1px);
+}
+
+.dark .date-range-box:hover {
+  background: rgba(30, 41, 59, 0.7);
+  border-color: rgba(99, 102, 241, 0.5);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.3);
+}
+
 .date-range-box:focus-within {
-  border-color: #b4acff;
-  box-shadow: 0 4px 14px rgba(109,92,255,0.12);
+  border-color: var(--violet);
+  background: #ffffff;
+  box-shadow: 0 0 0 4px rgba(109, 92, 255, 0.14);
+}
+
+.dark .date-range-box:focus-within {
+  background: rgba(30, 41, 59, 0.9);
+  border-color: #818cf8;
+  box-shadow: 0 0 0 4px rgba(129, 140, 248, 0.2);
 }
 
 .date-range-icon {
-  width: 15px;
-  height: 15px;
-  color: var(--muted);
+  width: 16px;
+  height: 16px;
+  color: #64748b;
   flex-shrink: 0;
 }
 
 .date-range-input {
   border: none;
   background: transparent;
-  color: var(--ink);
+  color: #0f172a;
   font-family: inherit;
-  font-size: 0.82rem;
+  font-size: 0.85rem;
   font-weight: 600;
-  padding: 4px 2px;
+  padding: 4px 4px;
   outline: none;
   cursor: pointer;
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+}
+
+.dark .date-range-input {
+  color: #f8fafc;
 }
 
 .date-range-sep {
-  color: var(--muted);
-  font-size: 0.78rem;
+  color: #94a3b8;
+  font-size: 0.8rem;
   font-weight: 700;
+  padding: 0 2px;
+  flex-shrink: 0;
 }
 
 .date-range-clear {
   border: none;
   background: transparent;
-  color: var(--muted);
+  color: #94a3b8;
   cursor: pointer;
-  padding: 2px 4px;
+  padding: 2px 6px;
   border-radius: 6px;
-  font-size: 1.1rem;
+  font-size: 1.2rem;
   line-height: 1;
   display: grid;
   place-items: center;
-  transition: color 0.15s, background 0.15s;
+  transition: all 0.15s ease;
+  flex-shrink: 0;
 }
 
 .date-range-clear:hover {
@@ -2373,6 +2490,20 @@ body:has(.quality-login-viewport) {
 
   .balance-value {
     font-size: 0.9rem;
+  }
+
+  .filter-bar {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .filter-item-daterange {
+    grid-column: 1;
+  }
+
+  .custom-select-btn {
+    padding: 10px 14px;
+    font-size: 0.85rem;
   }
 
   .report-tabs {
