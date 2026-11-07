@@ -2,6 +2,44 @@
 import { useState, useEffect, useMemo, useRef, useSyncExternalStore } from 'react'
 import { useRouter } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { getUsuarioActual } from '@/lib/session'
+import { NOMBRE_ROL, esAdministrador, rutaInicio } from '@/lib/permisos'
+
+const MOV_COLUMNAS = [
+  'id, numero, sucursal_id, tipo, monto, concepto, fecha, metodo_pago, origen, anulado, motivo_anulacion, creado_en, categoria_id',
+  'categoria:categorias!movimientos_categoria_fk(nombre)',
+  'sucursal:sucursales!movimientos_sucursal_id_fkey(nombre)',
+  'autor:usuarios!movimientos_creado_por_fkey(nombre)',
+].join(', ')
+
+const TODAS = 'todas'
+const NUEVA_CATEGORIA = '__nueva__'
+const METODOS_PAGO = { efectivo: 'Efectivo', tarjeta: 'Tarjeta', transferencia: 'Transferencia' }
+const CATEGORIA_COLUMNAS = 'id, nombre, tipo, sucursal_id'
+
+/** Movimientos de una sucursal o de todas (RLS limita a las que el usuario puede ver). */
+function fetchMovimientos(sucursalId) {
+  let query = supabase
+    .from('movimientos')
+    .select(MOV_COLUMNAS)
+    .order('fecha', { ascending: false })
+    .order('numero', { ascending: false })
+  if (sucursalId !== TODAS) query = query.eq('sucursal_id', sucursalId)
+  return query
+}
+
+function fetchCategorias() {
+  return supabase.from('categorias').select(CATEGORIA_COLUMNAS).eq('activa', true).order('nombre')
+}
+
+function hoyISO() {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+}
+
+function formInicialMovimiento(sucursalId) {
+  return { monto:'', tipo:'entrada', categoriaId:'', nuevaCategoria:'', concepto:'', fecha: hoyISO(), metodoPago:'efectivo', sucursalId }
+}
 
 function subscribeDarkMode(callback) {
   window.addEventListener('storage', callback)
@@ -224,13 +262,22 @@ function SelectDropdown({ id, label, value, options, onChange }) {
 function mapRow(t) {
   return {
     id: t.id,
-    folio: t.folio_visual,
-    date: t.creado_en,
+    folio: 'MOV-' + String(t.numero).padStart(6, '0'),
+    // fecha es DATE (sin hora): se fija al mediodía para que la zona horaria no la mueva de día.
+    date: `${t.fecha}T12:00:00`,
+    fecha: t.fecha,
     concepto: t.concepto || '',
-    categoria: t.categoria || '',
-    tipo: (t.tipo || '').toLowerCase(),
+    categoria: t.categoria?.nombre || 'Sin categoría',
+    categoriaId: t.categoria_id,
+    tipo: t.tipo,
     amount: Number(t.monto) || 0,
-    retirado: t.retirado || false,
+    retirado: t.anulado,
+    motivoAnulacion: t.motivo_anulacion || '',
+    metodoPago: t.metodo_pago,
+    origen: t.origen,
+    sucursalId: t.sucursal_id,
+    sucursal: t.sucursal?.nombre || '',
+    autor: t.autor?.nombre || '',
   }
 }
 
@@ -433,7 +480,7 @@ export default function Finanzas() {
 
   const [addModalOpen, setAddModalOpen] = useState(false)
   const [addModalShown, setAddModalShown] = useState(false)
-  const [addForm, setAddForm] = useState({ monto:'', tipo:'entrada', categoria:'', concepto:'' })
+  const [addForm, setAddForm] = useState(formInicialMovimiento(''))
   const [addErrors, setAddErrors] = useState({})
 
   const [editModalOpen, setEditModalOpen] = useState(false)
@@ -442,82 +489,96 @@ export default function Finanzas() {
   const [editCategoria, setEditCategoria] = useState('')
   const [editConcepto, setEditConcepto] = useState('')
   const [editMonto, setEditMonto] = useState('')
+  const [editFecha, setEditFecha] = useState('')
   const [editErrors, setEditErrors] = useState({})
 
   const [menuTarget, setMenuTarget] = useState(null)
   const [menuPos, setMenuPos] = useState({ top:0, left:0 })
 
   const [confirmTarget, setConfirmTarget] = useState(null)
+  const [motivoAnulacion, setMotivoAnulacion] = useState('')
+  const [motivoError, setMotivoError] = useState('')
 
   const [toast, setToast] = useState({ message:'', mounted:false, show:false })
 
   const montoRef = useRef(null)
   const editCategoriaRef = useRef(null)
 
-  const [currentUser, setCurrentUser] = useState({ id: '', nombre: '', rol: '' })
+  const [currentUser, setCurrentUser] = useState({ id: '', nombre: '', rol: '', sucursalId: null })
+  const [sucursales, setSucursales] = useState([])
+  const [sucursalActiva, setSucursalActiva] = useState(null)
+  const [catalogo, setCatalogo] = useState([])
 
-  /* ── Sesión Multi-Cuenta ── */
+  /* ── Sesión (validada por Supabase Auth), sucursales y catálogo ── */
+  /* El aislamiento por sucursal lo garantiza RLS (supabase/fase2_finanzas_sucursal.sql). */
 
   useEffect(() => {
-    const uid = localStorage.getItem('usuario_id')
-    if (!uid) {
-      router.replace('/')
-      return
+    let active = true
+    async function cargarSesion() {
+      try {
+        const usuario = await getUsuarioActual()
+        if (!active) return
+        if (!usuario) { router.replace('/'); return }
+        if (!esAdministrador(usuario)) { router.replace(rutaInicio(usuario)); return }
+        setCurrentUser({ id: usuario.id, nombre: usuario.nombre || 'Usuario', rol: usuario.rol, sucursalId: usuario.sucursal_id })
+        const [{ data: sucs }, { data: cats }] = await Promise.all([
+          supabase.from('sucursales').select('id, nombre').eq('activa', true).order('nombre'),
+          fetchCategorias(),
+        ])
+        if (!active) return
+        setSucursales(sucs || [])
+        setCatalogo(cats || [])
+        setSucursalActiva(usuario.rol === 'superadmin' ? TODAS : usuario.sucursal_id)
+      } catch {
+        if (active) router.replace('/')
+      }
     }
-    setCurrentUser({
-      id: uid,
-      nombre: localStorage.getItem('usuario_nombre') || 'Usuario',
-      rol: localStorage.getItem('usuario_rol') || 'usuario',
-    })
+    cargarSesion()
+    return () => { active = false }
   }, [router])
 
-  function handleLogout() {
-    localStorage.removeItem('usuario_id')
-    localStorage.removeItem('usuario_nombre')
-    localStorage.removeItem('usuario_rol')
+  /* Movimientos de la sucursal activa (se recargan al cambiarla). */
+  useEffect(() => {
+    if (!sucursalActiva) return
+    let active = true
+    fetchMovimientos(sucursalActiva).then(({ data, error }) => {
+      if (!active) return
+      if (error) { setLoadError(true); setLoading(false); return }
+      setLoadError(false)
+      setMovements(data.map(mapRow))
+      setLoading(false)
+    })
+    return () => { active = false }
+  }, [sucursalActiva])
+
+  async function handleLogout() {
+    await supabase.auth.signOut()
     router.replace('/')
   }
 
-  /* ── Supabase (Aislamiento por usuario / Multi-Tenant) ── */
-
   async function reload() {
     setLoadError(false)
-    const uid = localStorage.getItem('usuario_id')
-    if (!uid) {
-      router.replace('/')
-      return
-    }
-    const { data, error } = await supabase
-      .from('transacciones')
-      .select('*')
-      .eq('id_usuario', uid)
-      .order('creado_en', { ascending: false })
+    if (!sucursalActiva) return
+    const { data, error } = await fetchMovimientos(sucursalActiva)
     if (error) { setLoadError(true); setLoading(false); return }
     setMovements(data.map(mapRow))
     setLoading(false)
   }
 
-  useEffect(() => {
-    let active = true
-    async function load() {
-      const uid = localStorage.getItem('usuario_id')
-      if (!uid) {
-        router.replace('/')
-        return
-      }
-      const { data, error } = await supabase
-        .from('transacciones')
-        .select('*')
-        .eq('id_usuario', uid)
-        .order('creado_en', { ascending: false })
-      if (!active) return
-      if (error) { setLoadError(true); setLoading(false); return }
-      setMovements(data.map(mapRow))
-      setLoading(false)
-    }
-    load()
-    return () => { active = false }
-  }, [router])
+  async function recargarCatalogo() {
+    const { data } = await fetchCategorias()
+    setCatalogo(data || [])
+    return data || []
+  }
+
+  const esVistaGlobal = sucursalActiva === TODAS
+  const nombreSucursalActiva = esVistaGlobal
+    ? 'Ambas sucursales'
+    : (sucursales.find(x => x.id === sucursalActiva)?.nombre || '')
+
+  function categoriasPara(sucursalId, tipo) {
+    return catalogo.filter(c => c.sucursal_id === sucursalId && c.tipo === tipo)
+  }
 
   /* ── Datos derivados ── */
 
@@ -552,11 +613,6 @@ export default function Finanzas() {
     return label.charAt(0).toUpperCase() + label.slice(1)
   }, [])
 
-  const categorias = useMemo(() => {
-    const set = new Set(movements.map(m => m.categoria).filter(Boolean))
-    return [...set].sort((a,b) => a.localeCompare(b, 'es'))
-  }, [movements])
-
   const resumenRows = filtered.slice(0, 10)
   const isOut = chartType === 'salida'
 
@@ -566,13 +622,15 @@ export default function Finanzas() {
   const pageRows = filtered.slice((page - 1) * PER_PAGE, page * PER_PAGE)
 
   function exportCSV() {
-    const header = ['Fecha','Folio','Concepto','Categoría','Tipo','Monto']
+    const header = ['Fecha','Folio','Sucursal','Concepto','Categoría','Tipo','Método de pago','Monto']
     const rows = filtered.map(m => [
       new Date(m.date).toLocaleDateString('es-MX'),
       m.folio,
+      `"${m.sucursal}"`,
       `"${String(m.concepto || '').replace(/"/g,'""')}"`,
       `"${String(m.categoria || '').replace(/"/g,'""')}"`,
       m.tipo === 'entrada' ? 'Entrada' : 'Salida',
+      METODOS_PAGO[m.metodoPago] || m.metodoPago,
       m.amount.toFixed(2),
     ])
     const csv = [header, ...rows].map(r => r.join(',')).join('\n')
@@ -815,8 +873,8 @@ export default function Finanzas() {
           <tr style="background-color:#f1f5f9;">
             <td style="font-weight:bold; color:#475569; width:130px;">Periodo:</td>
             <td colspan="2" style="font-weight:bold; color:#0f172a;">${periodDesc}</td>
-            <td style="font-weight:bold; color:#475569; width:130px;">Usuario / Cuenta:</td>
-            <td colspan="2" style="font-weight:bold; color:#0f172a;">${currentUser.nombre || 'Usuario'}</td>
+            <td style="font-weight:bold; color:#475569; width:130px;">Sucursal:</td>
+            <td colspan="2" style="font-weight:bold; color:#0f172a;">${nombreSucursalActiva} · ${currentUser.nombre || 'Usuario'}</td>
           </tr>
           <tr style="background-color:#f8fafc;">
             <td style="font-weight:bold; color:#475569;">Fecha de emisión:</td>
@@ -879,7 +937,7 @@ export default function Finanzas() {
   function openAddModal() {
     setAddModalOpen(true)
     requestAnimationFrame(() => setAddModalShown(true))
-    setAddForm({ monto:'', tipo:'entrada', categoria:'', concepto:'' })
+    setAddForm(formInicialMovimiento(esVistaGlobal ? '' : sucursalActiva))
     setAddErrors({})
     setTimeout(() => montoRef.current && montoRef.current.focus(), 80)
   }
@@ -893,7 +951,8 @@ export default function Finanzas() {
     const m = movements.find(x => x.id === id)
     if (!m) return
     setEditTarget(m)
-    setEditCategoria(m.categoria)
+    setEditCategoria(m.categoriaId)
+    setEditFecha(m.fecha)
     setEditConcepto(m.concepto)
     setEditMonto(String(m.amount))
     setEditErrors({})
@@ -932,33 +991,61 @@ export default function Finanzas() {
   /* ── Agregar movimiento ── */
 
   function handleAddChange(e) {
-    setAddForm(prev => ({ ...prev, [e.target.name]: e.target.value }))
+    const { name, value } = e.target
+    setAddForm(prev => {
+      const next = { ...prev, [name]: value }
+      // La categoría depende de la sucursal y del tipo.
+      if (name === 'tipo' || name === 'sucursalId') next.categoriaId = ''
+      return next
+    })
+    setAddErrors(prev => ({ ...prev, [name]: '' }))
+  }
+
+  /** Devuelve el id de la categoría elegida, creándola si es nueva. */
+  async function resolverCategoria(sucursalId, tipo, categoriaId, nuevaCategoria) {
+    if (categoriaId !== NUEVA_CATEGORIA) return { id: categoriaId }
+    const nombre = nuevaCategoria.trim()
+    const { data, error } = await supabase
+      .from('categorias').insert({ sucursal_id: sucursalId, tipo, nombre }).select('id').single()
+    if (!error) { await recargarCatalogo(); return { id: data.id } }
+    if (error.code === '23505') {
+      // Ya existía con otra capitalización: se usa la existente.
+      const cats = await recargarCatalogo()
+      const existente = cats.find(c => c.sucursal_id === sucursalId && c.tipo === tipo && c.nombre.trim().toLowerCase() === nombre.toLowerCase())
+      if (existente) return { id: existente.id }
+    }
+    return { error: error.message }
   }
 
   async function handleAddSubmit(e) {
     e.preventDefault()
     setAddErrors({})
     const monto = parseFloat(addForm.monto)
+    const sucursalDestino = esVistaGlobal ? addForm.sucursalId : sucursalActiva
     const errs = {}
+    if (!sucursalDestino) errs.sucursalId = 'Selecciona la sucursal.'
     if (!monto || monto <= 0 || Number.isNaN(monto)) errs.monto = 'Ingresa un monto mayor a cero.'
-    if (!addForm.categoria.trim()) errs.categoria = 'La categoría es obligatoria.'
+    if (!addForm.categoriaId) errs.categoriaId = 'Selecciona una categoría.'
+    if (addForm.categoriaId === NUEVA_CATEGORIA && !addForm.nuevaCategoria.trim()) errs.nuevaCategoria = 'Escribe el nombre de la categoría.'
     if (!addForm.concepto.trim()) errs.concepto = 'El concepto es obligatorio.'
+    if (!addForm.fecha) errs.fecha = 'La fecha es obligatoria.'
     if (Object.keys(errs).length > 0) { setAddErrors(errs); return }
 
-    const userId = localStorage.getItem('usuario_id')
-    if (!userId) { showToast('Inicia sesión de nuevo para guardar movimientos.'); return }
+    if (!currentUser.id) { showToast('Inicia sesión de nuevo para guardar movimientos.'); return }
 
-    const payload = {
-      tipo: addForm.tipo === 'entrada' ? 'Entrada' : 'Salida',
+    const categoria = await resolverCategoria(sucursalDestino, addForm.tipo, addForm.categoriaId, addForm.nuevaCategoria)
+    if (categoria.error) { showToast('Error: ' + categoria.error); return }
+
+    const { error: insertError } = await supabase.from('movimientos').insert({
+      sucursal_id: sucursalDestino,
+      tipo: addForm.tipo,
       monto,
-      categoria: addForm.categoria.trim(),
+      categoria_id: categoria.id,
       concepto: addForm.concepto.trim(),
-      id_usuario: userId,
-      folio_visual: 'FOL-' + Date.now().toString().slice(-5),
-      retirado: false,
-    }
-
-    const { error: insertError } = await supabase.from('transacciones').insert([payload])
+      fecha: addForm.fecha,
+      metodo_pago: addForm.metodoPago,
+      creado_por: currentUser.id,
+    })
 
     if (insertError) {
       console.error('Error al insertar en Supabase:', insertError)
@@ -980,23 +1067,16 @@ export default function Finanzas() {
     const monto = parseFloat(editMonto)
     const errs = {}
     if (!monto || monto <= 0 || Number.isNaN(monto)) errs.monto = 'Ingresa un monto mayor a cero.'
-    if (!editCategoria.trim()) errs.categoria = 'La categoría es obligatoria.'
+    if (!editCategoria) errs.categoria = 'Selecciona una categoría.'
     if (!editConcepto.trim()) errs.concepto = 'El concepto es obligatorio.'
+    if (!editFecha) errs.fecha = 'La fecha es obligatoria.'
     if (Object.keys(errs).length > 0) { setEditErrors(errs); return }
     if (!editTarget) return
 
-    const userId = localStorage.getItem('usuario_id')
-    if (!userId) { showToast('Sesión inválida. Vuelve a iniciar sesión.'); return }
-
     const { error: updateError } = await supabase
-      .from('transacciones')
-      .update({
-        categoria: editCategoria.trim(),
-        concepto: editConcepto.trim(),
-        monto
-      })
+      .from('movimientos')
+      .update({ categoria_id: editCategoria, concepto: editConcepto.trim(), monto, fecha: editFecha })
       .eq('id', editTarget.id)
-      .eq('id_usuario', userId)
 
     if (updateError) {
       console.error('Error al actualizar en Supabase:', updateError)
@@ -1009,31 +1089,30 @@ export default function Finanzas() {
     await reload()
   }
 
-  /* ── Eliminar movimiento ── */
+  /* ── Anular movimiento (no se borra: queda quién, cuándo y por qué) ── */
 
   function requestDelete(id) {
     const m = movements.find(x => x.id === id)
     if (!m) return
+    setMotivoAnulacion('')
+    setMotivoError('')
     setConfirmTarget(id)
   }
 
   async function deleteMovement() {
     if (!confirmTarget) return
+    if (!motivoAnulacion.trim()) { setMotivoError('Escribe el motivo de la anulación.'); return }
     const id = confirmTarget
     setConfirmTarget(null)
 
-    const userId = localStorage.getItem('usuario_id')
-    if (!userId) { showToast('Sesión inválida. Vuelve a iniciar sesión.'); return }
-
     const { error } = await supabase
-      .from('transacciones')
-      .delete()
+      .from('movimientos')
+      .update({ anulado: true, motivo_anulacion: motivoAnulacion.trim() })
       .eq('id', id)
-      .eq('id_usuario', userId)
 
-    if (error) { showToast('No se pudo eliminar el movimiento.'); return }
+    if (error) { showToast('No se pudo anular: ' + error.message); return }
 
-    showToast('Movimiento eliminado correctamente.')
+    showToast('Movimiento anulado. Ya no cuenta en saldos ni reportes.')
     await reload()
   }
 
@@ -1074,10 +1153,15 @@ export default function Finanzas() {
     return data.map(m => {
       const isIn = m.tipo === 'entrada'
       return (
-        <tr key={m.id} className={m.retirado ? 'row-retired' : ''}>
+        <tr key={m.id} className={m.retirado ? 'row-retired' : ''} title={m.retirado ? `Anulado: ${m.motivoAnulacion}` : undefined}>
           <td>{formatDate(m.date)}</td>
           <td className="op-id">{m.folio}</td>
-          <td>{m.concepto}</td>
+          <td>
+            {m.concepto}
+            <span className="row-meta">
+              {esVistaGlobal && `${m.sucursal} · `}{METODOS_PAGO[m.metodoPago] || m.metodoPago}{m.retirado && ' · Anulado'}
+            </span>
+          </td>
           <td>
             <span className="cat-chip">
               <span className="cat-dot" style={{ '--c': colorOf(m.categoria) }}></span>
@@ -1238,7 +1322,7 @@ export default function Finanzas() {
             </div>
             <div className="drawer-user-info">
               <span className="drawer-user-name">{currentUser.nombre || 'Mi Cuenta'}</span>
-              <span className="drawer-user-badge">{currentUser.rol === 'admin' ? 'Administrador' : 'Cuenta Activa'}</span>
+              <span className="drawer-user-badge">{NOMBRE_ROL[currentUser.rol] || 'Cuenta Activa'}</span>
             </div>
           </div>
 
@@ -1253,6 +1337,22 @@ export default function Finanzas() {
                 Resumen
               </a>
             </li>
+            {esAdministrador(currentUser) && (
+              <li>
+                <a href="/usuarios" className="drawer-link" onClick={() => setDrawerOpen(false)}>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                  Personal
+                </a>
+              </li>
+            )}
+            {esAdministrador(currentUser) && (
+              <li>
+                <a href="/pedidos" className="drawer-link" onClick={() => setDrawerOpen(false)}>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="9" cy="7" r="4"/><path d="M2 21a7 7 0 0 1 14 0"/><path d="M16 3l5 5-5 5"/><path d="M21 8h-8"/></svg>
+                  Pedidos
+                </a>
+              </li>
+            )}
             <li>
               <a
                 href="#"
@@ -1300,6 +1400,19 @@ export default function Finanzas() {
           <h1 className="app-title">Finanzas</h1>
           <p className="app-subtitle">{VIEW_SUBTITLES[currentView]}</p>
         </div>
+        {currentUser.rol === 'superadmin' ? (
+          <select
+            className="sucursal-select"
+            aria-label="Sucursal"
+            value={sucursalActiva || TODAS}
+            onChange={e => { setSucursalActiva(e.target.value); setPage(1) }}
+          >
+            <option value={TODAS}>Ambas sucursales</option>
+            {sucursales.map(x => <option key={x.id} value={x.id}>{x.nombre}</option>)}
+          </select>
+        ) : (
+          <span className="sucursal-label">{nombreSucursalActiva}</span>
+        )}
         <div className="header-account-group">
           <div className="account-user-pill" title={`Cuenta activa: ${currentUser.nombre} (${currentUser.rol})`}>
             <span className="account-user-avatar">
@@ -1551,8 +1664,18 @@ export default function Finanzas() {
       {/* ── Menú contextual de fila ── */}
       {menuTarget && (
         <div className="row-menu" style={{ top: menuPos.top, left: menuPos.left }}>
-          <button className="row-menu-item" onClick={() => { const id = menuTarget; setMenuTarget(null); openEditModal(id) }}>Modificar</button>
-          <button className="row-menu-item row-menu-danger" onClick={() => { const id = menuTarget; setMenuTarget(null); requestDelete(id) }}>Eliminar</button>
+          {(() => {
+            const m = movements.find(x => x.id === menuTarget)
+            if (!m) return null
+            if (m.retirado) return <p className="row-menu-note">Anulado: {m.motivoAnulacion}</p>
+            if (m.origen !== 'manual') return <p className="row-menu-note">Generado por un pedido; se corrige desde el pedido.</p>
+            return (
+              <>
+                <button className="row-menu-item" onClick={() => { setMenuTarget(null); openEditModal(m.id) }}>Modificar</button>
+                <button className="row-menu-item row-menu-danger" onClick={() => { setMenuTarget(null); requestDelete(m.id) }}>Anular</button>
+              </>
+            )
+          })()}
         </div>
       )}
 
@@ -1564,13 +1687,25 @@ export default function Finanzas() {
       >
         <div className="modal-card modal-card-sm" role="dialog" aria-modal="true" aria-labelledby="confirmDeleteTitle">
           <div className="modal-header">
-            <h3 className="modal-title" id="confirmDeleteTitle">Eliminar movimiento</h3>
+            <h3 className="modal-title" id="confirmDeleteTitle">Anular movimiento</h3>
             <button type="button" className="modal-close" onClick={() => setConfirmTarget(null)} aria-label="Cerrar">&times;</button>
           </div>
-          <p className="confirm-text">¿Estás seguro de eliminar este movimiento? Esta acción no se puede deshacer.</p>
+          <p className="confirm-text">El movimiento quedará registrado como anulado y dejará de contar en saldos y reportes. No se puede deshacer.</p>
+          <div className="form-row">
+            <label htmlFor="motivoAnulacion">Motivo</label>
+            <input
+              type="text"
+              id="motivoAnulacion"
+              placeholder="Ej. Se registró dos veces"
+              value={motivoAnulacion}
+              onChange={e => { setMotivoAnulacion(e.target.value); setMotivoError('') }}
+              className={motivoError ? 'invalid' : ''}
+            />
+            {motivoError && <p className="form-error">{motivoError}</p>}
+          </div>
           <div className="modal-actions">
             <button type="button" className="btn btn-ghost" onClick={() => setConfirmTarget(null)}>Cancelar</button>
-            <button type="button" className="btn btn-danger" onClick={deleteMovement}>Eliminar</button>
+            <button type="button" className="btn btn-danger" onClick={deleteMovement}>Anular</button>
           </div>
         </div>
       </div>
@@ -1587,6 +1722,16 @@ export default function Finanzas() {
             <button type="button" className="modal-close" onClick={closeAddModal} aria-label="Cerrar">&times;</button>
           </div>
           <form id="movementForm" onSubmit={handleAddSubmit} noValidate>
+            {esVistaGlobal && (
+              <div className="form-row">
+                <label htmlFor="addSucursal">Sucursal</label>
+                <select id="addSucursal" name="sucursalId" value={addForm.sucursalId} onChange={handleAddChange} className={addErrors.sucursalId ? 'invalid' : ''}>
+                  <option value="">Selecciona…</option>
+                  {sucursales.map(x => <option key={x.id} value={x.id}>{x.nombre}</option>)}
+                </select>
+                {addErrors.sucursalId && <p className="form-error">{addErrors.sucursalId}</p>}
+              </div>
+            )}
             <div className="form-row">
               <label htmlFor="addMonto">Monto</label>
               <input ref={montoRef} type="number" id="addMonto" name="monto" min="0.01" step="0.01" placeholder="0.00" required value={addForm.monto} onChange={handleAddChange} className={addErrors.monto ? 'invalid' : ''} />
@@ -1601,16 +1746,37 @@ export default function Finanzas() {
             </fieldset>
             <div className="form-row">
               <label htmlFor="addCategoria">Categoría</label>
-              <input type="text" id="addCategoria" name="categoria" list="categorias-list" placeholder="Ej. Alimentación" required value={addForm.categoria} onChange={handleAddChange} className={addErrors.categoria ? 'invalid' : ''} />
-              <datalist id="categorias-list">
-                {categorias.map(c => <option key={c} value={c} />)}
-              </datalist>
-              {addErrors.categoria && <p className="form-error">{addErrors.categoria}</p>}
+              <select id="addCategoria" name="categoriaId" value={addForm.categoriaId} onChange={handleAddChange} disabled={esVistaGlobal && !addForm.sucursalId} className={addErrors.categoriaId ? 'invalid' : ''}>
+                <option value="">{esVistaGlobal && !addForm.sucursalId ? 'Primero elige la sucursal' : 'Selecciona…'}</option>
+                {categoriasPara(esVistaGlobal ? addForm.sucursalId : sucursalActiva, addForm.tipo).map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                <option value={NUEVA_CATEGORIA}>+ Nueva categoría…</option>
+              </select>
+              {addErrors.categoriaId && <p className="form-error">{addErrors.categoriaId}</p>}
             </div>
+            {addForm.categoriaId === NUEVA_CATEGORIA && (
+              <div className="form-row">
+                <label htmlFor="addNuevaCategoria">Nombre de la nueva categoría</label>
+                <input type="text" id="addNuevaCategoria" name="nuevaCategoria" value={addForm.nuevaCategoria} onChange={handleAddChange} className={addErrors.nuevaCategoria ? 'invalid' : ''} />
+                {addErrors.nuevaCategoria && <p className="form-error">{addErrors.nuevaCategoria}</p>}
+              </div>
+            )}
             <div className="form-row">
               <label htmlFor="addConcepto">Concepto</label>
-              <input type="text" id="addConcepto" name="concepto" placeholder="Ej. Supermercado mensual" required value={addForm.concepto} onChange={handleAddChange} className={addErrors.concepto ? 'invalid' : ''} />
+              <input type="text" id="addConcepto" name="concepto" placeholder="Ej. Pago de luz de noviembre" required value={addForm.concepto} onChange={handleAddChange} className={addErrors.concepto ? 'invalid' : ''} />
               {addErrors.concepto && <p className="form-error">{addErrors.concepto}</p>}
+            </div>
+            <div className="form-row-pair">
+              <div className="form-row">
+                <label htmlFor="addFecha">Fecha</label>
+                <input type="date" id="addFecha" name="fecha" max={hoyISO()} value={addForm.fecha} onChange={handleAddChange} className={addErrors.fecha ? 'invalid' : ''} />
+                {addErrors.fecha && <p className="form-error">{addErrors.fecha}</p>}
+              </div>
+              <div className="form-row">
+                <label htmlFor="addMetodo">Método de pago</label>
+                <select id="addMetodo" name="metodoPago" value={addForm.metodoPago} onChange={handleAddChange}>
+                  {Object.entries(METODOS_PAGO).map(([valor, etiqueta]) => <option key={valor} value={valor}>{etiqueta}</option>)}
+                </select>
+              </div>
             </div>
             <div className="modal-actions">
               <button type="button" className="btn btn-ghost" onClick={closeAddModal}>Cancelar</button>
@@ -1634,8 +1800,10 @@ export default function Finanzas() {
           {editTarget && (
             <>
               <div className="edit-info">
-                <div className="info-row"><span className="info-label">ID</span><span>{editTarget.folio}</span></div>
-                <div className="info-row"><span className="info-label">Fecha</span><span>{formatDate(editTarget.date)}</span></div>
+                <div className="info-row"><span className="info-label">Folio</span><span>{editTarget.folio}</span></div>
+                <div className="info-row"><span className="info-label">Sucursal</span><span>{editTarget.sucursal}</span></div>
+                <div className="info-row"><span className="info-label">Tipo</span><span>{editTarget.tipo === 'entrada' ? 'Entrada' : 'Salida'}</span></div>
+                <div className="info-row"><span className="info-label">Registró</span><span>{editTarget.autor || '—'}</span></div>
               </div>
               <form id="editForm" onSubmit={handleEditSubmit} noValidate>
                 <div className="form-row">
@@ -1645,13 +1813,20 @@ export default function Finanzas() {
                 </div>
                 <div className="form-row">
                   <label htmlFor="editCategoria">Categoría</label>
-                  <input ref={editCategoriaRef} type="text" id="editCategoria" list="categorias-list" value={editCategoria} onChange={e => { setEditCategoria(e.target.value); setEditErrors(prev => ({ ...prev, categoria: '' })) }} className={editErrors.categoria ? 'invalid' : ''} />
+                  <select ref={editCategoriaRef} id="editCategoria" value={editCategoria} onChange={e => { setEditCategoria(e.target.value); setEditErrors(prev => ({ ...prev, categoria: '' })) }} className={editErrors.categoria ? 'invalid' : ''}>
+                    {categoriasPara(editTarget.sucursalId, editTarget.tipo).map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                  </select>
                   {editErrors.categoria && <p className="form-error">{editErrors.categoria}</p>}
                 </div>
                 <div className="form-row">
                   <label htmlFor="editConcepto">Concepto</label>
                   <input type="text" id="editConcepto" value={editConcepto} onChange={e => { setEditConcepto(e.target.value); setEditErrors(prev => ({ ...prev, concepto: '' })) }} className={editErrors.concepto ? 'invalid' : ''} />
                   {editErrors.concepto && <p className="form-error">{editErrors.concepto}</p>}
+                </div>
+                <div className="form-row">
+                  <label htmlFor="editFecha">Fecha</label>
+                  <input type="date" id="editFecha" max={hoyISO()} value={editFecha} onChange={e => { setEditFecha(e.target.value); setEditErrors(prev => ({ ...prev, fecha: '' })) }} className={editErrors.fecha ? 'invalid' : ''} />
+                  {editErrors.fecha && <p className="form-error">{editErrors.fecha}</p>}
                 </div>
                 <div className="modal-actions">
                   <button type="button" className="btn btn-ghost" onClick={closeEditModal}>Cancelar</button>

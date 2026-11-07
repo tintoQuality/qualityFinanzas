@@ -176,6 +176,19 @@ body:has(.quality-login-viewport) {
   gap: 16px;
 }
 
+.quality-field-label {
+  color: #d1d5db;
+  font-size: 0.8rem;
+  font-weight: 600;
+  margin-bottom: -10px;
+}
+
+.quality-login-hint {
+  color: #c4b5fd;
+  font-size: 0.8rem;
+  margin: -6px 0 0;
+}
+
 /* Modern Input Box with icons and depth */
 .quality-input-wrapper {
   position: relative;
@@ -368,6 +381,63 @@ body:has(.quality-login-viewport) {
 /* ═══════════════════ Layout ═══════════════════ */
 
 .app { width: 100%; max-width: 1280px; }
+
+.extension-page {
+  width: min(100%, 1280px);
+  color: var(--ink);
+}
+
+.extension-header {
+  align-items: flex-start;
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 24px;
+}
+
+.extension-header h1 { margin: 8px 0 4px; }
+.extension-header p { color: var(--muted); margin: 0; }
+.back-link { background: transparent; border: 0; color: var(--violet); cursor: pointer; font: inherit; padding: 0; }
+.extension-grid { display: grid; gap: 20px; grid-template-columns: repeat(2, minmax(0, 1fr)); margin-bottom: 20px; }
+.extension-card { background: var(--card); border: 1px solid var(--line); border-radius: var(--radius-card); box-shadow: var(--shadow-card); padding: 24px; }
+.extension-card h2 { font-size: 1.15rem; margin: 0 0 18px; }
+.extension-card label { color: var(--muted); display: flex; flex-direction: column; font-size: .8rem; font-weight: 700; gap: 6px; margin-bottom: 13px; }
+.extension-card input, .extension-card select { background: var(--bg); border: 1px solid var(--line); border-radius: 9px; color: var(--ink); font: inherit; min-height: 38px; padding: 8px 10px; }
+.extension-form-row { display: grid; gap: 12px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.btn-primary { background: var(--violet); border-color: var(--violet); color: #fff; }
+.extension-alert { border-radius: 10px; margin: 12px 0; padding: 12px 14px; }
+.extension-alert.error { background: var(--red-bg); color: var(--red); }
+.extension-alert.success { background: var(--green-bg); color: #087f6b; }
+.extension-card .operations-header { margin-bottom: 14px; }
+.extension-hint { color: var(--muted); font-size: .8rem; margin: -4px 0 14px; }
+.extension-list { color: var(--muted); display: grid; gap: 10px; margin: 0; padding-left: 18px; }
+.extension-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.codigo-acceso p { margin: 0 0 6px; }
+
+/* Pedidos */
+.pedidos-filtros { margin-bottom: 12px; max-width: 520px; }
+.pedido-seleccionado td { background: var(--violet-bg, rgba(109,92,255,.08)); }
+.pedido-urgente { margin-left: 6px; }
+.pedido-detalle h3 { font-size: .95rem; margin: 18px 0 10px; }
+.pedido-montos { display: grid; gap: 12px; grid-template-columns: repeat(3, minmax(0, 1fr)); margin: 14px 0; }
+.pedido-montos div { background: var(--bg); border: 1px solid var(--line); border-radius: 12px; display: flex; flex-direction: column; gap: 4px; padding: 12px; }
+.pedido-montos span { color: var(--muted); font-size: .75rem; font-weight: 700; }
+.pedido-acciones { align-items: flex-end; margin-bottom: 14px; }
+.pedido-chofer { margin: 0 !important; min-width: 180px; }
+.pedido-pago { align-items: end; grid-template-columns: 1fr 1fr auto; margin-bottom: 6px; }
+.pedido-lista { display: grid; gap: 8px; list-style: none; margin: 0; padding: 0; }
+.pedido-lista li { border: 1px solid var(--line); border-radius: 10px; display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; }
+.pedido-lista li .btn { align-self: flex-start; margin-top: 6px; }
+.pedido-anulado { opacity: .6; text-decoration: line-through; }
+@media (max-width: 640px) {
+  .pedido-montos, .pedido-pago { grid-template-columns: 1fr; }
+}
+.codigo-acceso-valor { font-family: ui-monospace, monospace; font-size: 2rem; font-weight: 800; letter-spacing: .3em; }
+
+@media (max-width: 760px) {
+  .extension-grid { grid-template-columns: 1fr; }
+  .extension-header { align-items: stretch; flex-direction: column; gap: 14px; }
+  .extension-card { overflow-x: auto; }
+}
 
 /* ═══════════════════ Hamburger ═══════════════════ */
 
@@ -1481,6 +1551,7 @@ body:has(.quality-login-viewport) {
 }
 
 .form-row input,
+.form-row select,
 .form-row textarea {
   font-family: inherit;
   font-size: 0.92rem;
@@ -1494,6 +1565,7 @@ body:has(.quality-login-viewport) {
 }
 
 .form-row input:focus,
+.form-row select:focus,
 .form-row textarea:focus {
   outline: none;
   border-color: var(--violet);
@@ -1502,7 +1574,27 @@ body:has(.quality-login-viewport) {
 }
 
 .form-row input.invalid,
+.form-row select.invalid,
 .form-row textarea.invalid { border-color: var(--red); }
+.form-row select:disabled { opacity: .6; }
+.form-row-pair { display: grid; gap: 12px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media (max-width: 480px) { .form-row-pair { grid-template-columns: 1fr; } }
+
+/* Sucursal activa (encabezado de finanzas) */
+.sucursal-select,
+.sucursal-label {
+  background: var(--card);
+  border: 1.5px solid var(--line);
+  border-radius: 999px;
+  color: var(--ink);
+  font: inherit;
+  font-size: .85rem;
+  font-weight: 700;
+  padding: 8px 14px;
+}
+.sucursal-select { cursor: pointer; }
+.row-meta { color: var(--muted); display: block; font-size: .72rem; margin-top: 2px; }
+.row-menu-note { color: var(--muted); font-size: .8rem; margin: 0; max-width: 220px; padding: 10px 12px; }
 
 .form-row textarea { resize: vertical; }
 
@@ -2590,5 +2682,4 @@ body:has(.quality-login-viewport) {
     gap: 10px;
   }
 }
-
 

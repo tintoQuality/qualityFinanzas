@@ -2,9 +2,12 @@
 import { useState } from 'react'
 import { supabase } from '@/lib/supabase'
 import { useRouter } from 'next/navigation'
+import { getPerfilAutenticado } from '@/lib/session'
+import { ALIAS_REGEX, CODIGO_REGEX, correoInterno, rutaInicio } from '@/lib/permisos'
 
 export default function LoginPage() {
-  const [pin, setPin] = useState('')
+  const [alias, setAlias] = useState('')
+  const [codigo, setCodigo] = useState('')
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState('')
@@ -15,43 +18,39 @@ export default function LoginPage() {
     e?.preventDefault()
     setError('')
 
-    const cleanPin = pin.trim()
-    if (!cleanPin) {
-      setError('Ingresa tu código de acceso')
+    const cleanAlias = alias.trim().toLowerCase()
+    if (!ALIAS_REGEX.test(cleanAlias) || !CODIGO_REGEX.test(codigo)) {
+      setError('Ingresa tu usuario y tu código de 6 dígitos')
       return
     }
 
     setIsLoading(true)
 
     try {
-      // Consulta a la tabla usuarios por PIN único
-      const { data, error: sbError } = await supabase
-        .from('usuarios')
-        .select('*')
-        .eq('pin_hash', cleanPin)
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        email: correoInterno(cleanAlias),
+        password: codigo,
+      })
 
-      if (sbError || !data || data.length === 0) {
-        setError('Código de acceso incorrecto')
-        setIsLoading(false)
+      if (authError || !authData.user) {
+        setError(authError?.code === 'user_banned'
+          ? 'Usuario inactivo. Contacta al administrador.'
+          : 'Usuario o código incorrectos')
         return
       }
 
-      const usuario = data[0]
-
-      if (usuario.activo === false) {
-        setError('Usuario inactivo. Contacte al administrador.')
-        setIsLoading(false)
+      const usuario = await getPerfilAutenticado()
+      if (!usuario || !usuario.activo) {
+        await supabase.auth.signOut()
+        setError(usuario ? 'Usuario inactivo. Contacta al administrador.' : 'Tu cuenta no tiene un perfil configurado. Contacta al administrador.')
         return
       }
 
-      // Guardar sesión multi-cuenta y redirigir
-      localStorage.setItem('usuario_id', usuario.id)
-      localStorage.setItem('usuario_nombre', usuario.nombre || 'Usuario')
-      localStorage.setItem('usuario_rol', usuario.rol || 'usuario')
-      router.push('/finanzas')
+      // Supabase Auth conserva la sesión; cada página vuelve a leer el perfil desde la base de datos.
+      router.push(rutaInicio(usuario))
     } catch (err) {
       console.error(err)
-      setError('Error al conectar con la base de datos')
+      setError('Error al conectar con el servicio de acceso')
     } finally {
       setIsLoading(false)
     }
@@ -75,12 +74,31 @@ export default function LoginPage() {
         {/* Title & Subtitle */}
         <header className="quality-card-header">
           <h1 className="quality-card-title">Finanzas Quality</h1>
-          <p className="quality-card-subtitle">Ingresa tu código único de acceso</p>
+          <p className="quality-card-subtitle">Accede con tu usuario y código</p>
         </header>
 
         {/* Single Input Form */}
         <form onSubmit={handleLogin} className="quality-auth-form" noValidate>
-          {/* Single PIN / Access Code Field */}
+          <label className="quality-field-label" htmlFor="quality-alias">Usuario</label>
+          <div className={`quality-input-wrapper ${isFocused ? 'focused' : ''}`}>
+            <input
+              id="quality-alias"
+              type="text"
+              value={alias}
+              onChange={(e) => setAlias(e.target.value)}
+              onFocus={() => setIsFocused(true)}
+              onBlur={() => setIsFocused(false)}
+              placeholder="ej. jperez"
+              className="quality-single-input"
+              autoFocus
+              autoCapitalize="none"
+              autoCorrect="off"
+              spellCheck={false}
+              autoComplete="username"
+            />
+          </div>
+
+          <label className="quality-field-label" htmlFor="quality-access-code">Código de acceso</label>
           <div className={`quality-input-wrapper ${isFocused ? 'focused' : ''}`}>
             {/* Lock icon */}
             <svg
@@ -100,13 +118,14 @@ export default function LoginPage() {
             <input
               id="quality-access-code"
               type={showPassword ? 'text' : 'password'}
-              value={pin}
-              onChange={(e) => setPin(e.target.value)}
+              value={codigo}
+              onChange={(e) => setCodigo(e.target.value.replace(/\D/g, '').slice(0, 6))}
               onFocus={() => setIsFocused(true)}
               onBlur={() => setIsFocused(false)}
-              placeholder="Código de acceso"
+              placeholder="6 dígitos"
               className="quality-single-input"
-              autoFocus
+              inputMode="numeric"
+              maxLength={6}
               autoComplete="current-password"
             />
 
@@ -130,6 +149,7 @@ export default function LoginPage() {
               )}
             </button>
           </div>
+          <p className="quality-login-hint">¿Olvidaste tu código? Pide a tu administrador que te genere uno nuevo.</p>
 
           {/* Error Message */}
           {error && (
