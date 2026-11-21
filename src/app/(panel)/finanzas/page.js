@@ -1,32 +1,48 @@
 'use client'
-import { useState, useEffect, useMemo, useRef, useSyncExternalStore } from 'react'
-import { useRouter } from 'next/navigation'
+import { useState, useEffect, useMemo, useRef } from 'react'
+import { useSearchParams } from 'next/navigation'
 import { supabase } from '@/lib/supabase'
+import { EVENTO_ACCION, TODAS, TODAS_CUENTAS, usePanel } from '@/components/panel/PanelProvider'
+import { EsqueletoTabla } from '@/components/panel/Esqueleto'
 
-function subscribeDarkMode(callback) {
-  window.addEventListener('storage', callback)
-  window.addEventListener('darkmode-change', callback)
-  return () => {
-    window.removeEventListener('storage', callback)
-    window.removeEventListener('darkmode-change', callback)
-  }
-}
-function getDarkModeSnapshot() {
-  if (typeof window === 'undefined') return false
-  return localStorage.getItem('darkMode') === 'true'
-}
-function getDarkModeServerSnapshot() {
-  return false
+const MOV_COLUMNAS = [
+  'id, numero, sucursal_id, tipo, monto, concepto, fecha, metodo_pago, origen, anulado, motivo_anulacion, creado_en, categoria_id',
+  'categoria:categorias!movimientos_categoria_fk(nombre)',
+  'sucursal:sucursales!movimientos_sucursal_id_fkey(nombre)',
+  'autor:usuarios!movimientos_creado_por_fkey(nombre)',
+].join(', ')
+
+const SIN_DATOS = []
+const NUEVA_CATEGORIA = '__nueva__'
+const METODOS_PAGO = { efectivo: 'Efectivo', tarjeta: 'Tarjeta', transferencia: 'Transferencia' }
+const CATEGORIA_COLUMNAS = 'id, nombre, tipo, sucursal_id'
+
+/**
+ * Movimientos de una cuenta, de ambas sucursales (TODAS: solo Plaza + San Mateo) o de todas
+ * las cuentas (TODAS_CUENTAS). RLS limita a las que el usuario puede ver.
+ */
+function fetchMovimientos(sucursalId, idsSucursales) {
+  let query = supabase
+    .from('movimientos')
+    .select(MOV_COLUMNAS)
+    .order('fecha', { ascending: false })
+    .order('numero', { ascending: false })
+  if (sucursalId === TODAS) query = query.in('sucursal_id', idsSucursales)
+  else if (sucursalId !== TODAS_CUENTAS) query = query.eq('sucursal_id', sucursalId)
+  return query
 }
 
-function subscribeMounted() {
-  return () => {}
+function fetchCategorias() {
+  return supabase.from('categorias').select(CATEGORIA_COLUMNAS).eq('activa', true).order('nombre')
 }
-function getMountedSnapshot() {
-  return true
+
+function hoyISO() {
+  const d = new Date()
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }
-function getMountedServerSnapshot() {
-  return false
+
+function formInicialMovimiento(sucursalId) {
+  return { monto:'', tipo:'entrada', categoriaId:'', nuevaCategoria:'', concepto:'', fecha: hoyISO(), metodoPago:'efectivo', sucursalId }
 }
 
 const PALETTE = ['#6d5cff','#ff6b9d','#38bdf8','#22c1a4','#ffb454','#f97316','#8b5cf6','#ef4444']
@@ -62,13 +78,15 @@ const SORT_OPTIONS = [
   { value: 'amount-desc', label: 'Monto ↓ (Mayor a menor)' },
 ]
 
-const VIEW_SUBTITLES = { resumen:'Resumen', todos:'Todos los registros', reportes:'Reportes' }
-
 const REPORT_TABS = [
   { value: 'frecuencia', label: 'Frecuencia por categoría' },
   { value: 'montos', label: 'Montos por categoría' },
   { value: 'total', label: 'Ingresos vs gastos' },
+  { value: 'choferes', label: 'Cobros de choferes' },
 ]
+
+// Colores fijos por método de pago (reporte de cobros de choferes).
+const COLOR_METODO = { efectivo: '#22c1a4', tarjeta: '#6d5cff', transferencia: '#38bdf8' }
 
 const REPORT_PERIODS = [
   { value: 'all', label: 'Todo' },
@@ -224,13 +242,23 @@ function SelectDropdown({ id, label, value, options, onChange }) {
 function mapRow(t) {
   return {
     id: t.id,
-    folio: t.folio_visual,
-    date: t.creado_en,
+    folio: 'MOV-' + String(t.numero).padStart(6, '0'),
+    // fecha es DATE (sin hora): se fija al mediodía para que la zona horaria no la mueva de día.
+    date: `${t.fecha}T12:00:00`,
+    fecha: t.fecha,
     concepto: t.concepto || '',
-    categoria: t.categoria || '',
-    tipo: (t.tipo || '').toLowerCase(),
+    categoria: t.categoria?.nombre || 'Sin categoría',
+    categoriaId: t.categoria_id,
+    tipo: t.tipo,
     amount: Number(t.monto) || 0,
-    retirado: t.retirado || false,
+    retirado: t.anulado,
+    motivoAnulacion: t.motivo_anulacion || '',
+    metodoPago: t.metodo_pago,
+    origen: t.origen,
+    sucursalId: t.sucursal_id,
+    sucursal: t.sucursal?.nombre || '',
+    autor: t.autor?.nombre || '',
+    creadoEn: t.creado_en,
   }
 }
 
@@ -388,10 +416,128 @@ function TotalesCard({ totales }) {
   )
 }
 
+function formatDateTime(iso) {
+  return new Date(iso).toLocaleString('es-MX', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+}
+
+/** Cobros de choferes: total por método de pago (efectivo, tarjeta, transferencia). */
+function CobrosMetodoCard({ metodos, total, cantidad }) {
+  const slices = metodos.reduce(({ cum, list }, m) => {
+    if (total <= 0 || m.monto <= 0) return { cum, list }
+    const from = (cum / total) * 100
+    const to = ((cum + m.monto) / total) * 100
+    return { cum: cum + m.monto, list: [...list, `${COLOR_METODO[m.metodo]} ${from}% ${to}%`] }
+  }, { cum: 0, list: [] }).list
+  return (
+    <section className="report-card">
+      <div className="report-card-header">
+        <h2 className="overview-title">Cobros por método de pago</h2>
+        <span className="count-badge">{cantidad} cobro{cantidad === 1 ? '' : 's'}</span>
+      </div>
+      {total <= 0 ? (
+        <p className="empty-cat">Sin cobros de choferes en este periodo.</p>
+      ) : (
+        <div className="report-grid">
+          <div className="chart-side">
+            <div className="donut" role="img" aria-label="Cobros de choferes por método de pago" style={{ background: `conic-gradient(${slices.join(', ')})` }}>
+              <div className="donut-center">
+                <span className="donut-value">${formatMoney(total)}</span>
+                <span className="donut-label">Total cobrado</span>
+              </div>
+            </div>
+            <p className="chart-caption">Cobros de choferes por método de pago</p>
+          </div>
+          <div className="report-table-wrap">
+            <table className="operations-table report-table">
+              <thead>
+                <tr>
+                  <th>Método</th>
+                  <th className="col-amount">Cobros</th>
+                  <th className="col-amount">Monto</th>
+                  <th className="col-amount">%</th>
+                </tr>
+              </thead>
+              <tbody>
+                {metodos.map(m => (
+                  <tr key={m.metodo}>
+                    <td><span className="cat-chip"><span className="cat-dot" style={{ '--c': COLOR_METODO[m.metodo] }}></span>{METODOS_PAGO[m.metodo]}</span></td>
+                    <td className="col-amount op-id">{m.cantidad}</td>
+                    <td className="col-amount amount">${formatMoney(m.monto)}</td>
+                    <td className="col-amount op-id">{pctLabel(m.monto / total)}</td>
+                  </tr>
+                ))}
+                <tr className="report-total-row">
+                  <td>Total</td>
+                  <td className="col-amount">{cantidad}</td>
+                  <td className="col-amount amount">${formatMoney(total)}</td>
+                  <td className="col-amount">100%</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </section>
+  )
+}
+
+/** Cobros de choferes: detalle de cada entrada. */
+function CobrosDetalleCard({ cobros, mostrarSucursal }) {
+  return (
+    <section className="report-card">
+      <div className="report-card-header">
+        <h2 className="overview-title">Detalle de cobros</h2>
+        <span className="count-badge">{cobros.length} registro{cobros.length === 1 ? '' : 's'}</span>
+      </div>
+      {cobros.length === 0 ? (
+        <p className="empty-cat">Sin cobros de choferes en este periodo.</p>
+      ) : (
+        <div className="table-wrap">
+          <table className="operations-table cobros-detalle-table">
+            <thead>
+              <tr>
+                <th>Fecha y hora</th>
+                <th>Folio</th>
+                <th>Chofer</th>
+                {mostrarSucursal && <th>Sucursal</th>}
+                <th>Método</th>
+                <th className="col-amount">Monto</th>
+              </tr>
+            </thead>
+            <tbody>
+              {cobros.map(c => (
+                <tr key={c.id}>
+                  <td>{formatDateTime(c.creadoEn)}</td>
+                  <td className="op-id">{c.folio}</td>
+                  <td>{c.autor || '—'}</td>
+                  {mostrarSucursal && <td>{c.sucursal}</td>}
+                  <td><span className="cat-chip"><span className="cat-dot" style={{ '--c': COLOR_METODO[c.metodoPago] }}></span>{METODOS_PAGO[c.metodoPago] || c.metodoPago}</span></td>
+                  <td className="col-amount amount in">+${formatMoney(c.amount)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  )
+}
+
 export default function Finanzas() {
-  const router = useRouter()
-  const [movements, setMovements] = useState([])
-  const [loading, setLoading] = useState(true)
+  const {
+    usuario, cuentasVisibles, soloSucursales, cuentaChoferes, sucursalActiva, esVistaGlobal, nombreSucursalActiva,
+    setEncabezadoExtra, setAccionPrincipal, leerCache, guardarCache,
+  } = usePanel()
+  const currentUser = usuario
+  const idsSucursales = useMemo(() => soloSucursales.map(s => s.id), [soloSucursales])
+  // El reporte de choferes solo tiene datos en su cuenta o en "Todas las cuentas".
+  const vistaIncluyeChoferes = sucursalActiva === TODAS_CUENTAS || sucursalActiva === cuentaChoferes?.id
+
+  // Movimientos por sucursal: al cambiar de sucursal o volver a esta sección se muestran
+  // los últimos datos al instante mientras se recargan.
+  const [porSucursal, setPorSucursal] = useState(() => leerCache('movimientos') || {})
+  const movements = porSucursal[sucursalActiva] || SIN_DATOS
+  const loading = !(sucursalActiva in porSucursal)
   const [loadError, setLoadError] = useState(false)
   const [filters, setFilters] = useState({
     period: 'all',
@@ -401,39 +547,17 @@ export default function Finanzas() {
     endDate: '',
   })
   const [chartType, setChartType] = useState('salida')
-  const [currentView, setCurrentView] = useState('resumen')
+  const [filtrosAbiertos, setFiltrosAbiertos] = useState(false)
+  // Resumen / Todos los registros / Reportes viven en la URL (?vista=...): el menú del panel navega sin recargar.
+  const currentView = useSearchParams().get('vista') || 'resumen'
   const [reportType, setReportType] = useState('frecuencia')
   const [reportPeriod, setReportPeriod] = useState('all')
   const [reportStartDate, setReportStartDate] = useState('')
   const [reportEndDate, setReportEndDate] = useState('')
-  const [drawerOpen, setDrawerOpen] = useState(false)
-
-  const darkMode = useSyncExternalStore(subscribeDarkMode, getDarkModeSnapshot, getDarkModeServerSnapshot)
-  const mounted = useSyncExternalStore(subscribeMounted, getMountedSnapshot, getMountedServerSnapshot)
-
-  /* ── Dark mode sync ── */
-  useEffect(() => {
-    if (darkMode) {
-      document.documentElement.classList.add('dark')
-    } else {
-      document.documentElement.classList.remove('dark')
-    }
-  }, [darkMode])
-
-  function toggleDarkMode() {
-    const next = !darkMode
-    localStorage.setItem('darkMode', String(next))
-    if (next) {
-      document.documentElement.classList.add('dark')
-    } else {
-      document.documentElement.classList.remove('dark')
-    }
-    window.dispatchEvent(new Event('darkmode-change'))
-  }
 
   const [addModalOpen, setAddModalOpen] = useState(false)
   const [addModalShown, setAddModalShown] = useState(false)
-  const [addForm, setAddForm] = useState({ monto:'', tipo:'entrada', categoria:'', concepto:'' })
+  const [addForm, setAddForm] = useState(formInicialMovimiento(''))
   const [addErrors, setAddErrors] = useState({})
 
   const [editModalOpen, setEditModalOpen] = useState(false)
@@ -442,82 +566,78 @@ export default function Finanzas() {
   const [editCategoria, setEditCategoria] = useState('')
   const [editConcepto, setEditConcepto] = useState('')
   const [editMonto, setEditMonto] = useState('')
+  const [editFecha, setEditFecha] = useState('')
   const [editErrors, setEditErrors] = useState({})
 
   const [menuTarget, setMenuTarget] = useState(null)
   const [menuPos, setMenuPos] = useState({ top:0, left:0 })
 
   const [confirmTarget, setConfirmTarget] = useState(null)
+  const [motivoAnulacion, setMotivoAnulacion] = useState('')
+  const [motivoError, setMotivoError] = useState('')
 
   const [toast, setToast] = useState({ message:'', mounted:false, show:false })
 
   const montoRef = useRef(null)
   const editCategoriaRef = useRef(null)
 
-  const [currentUser, setCurrentUser] = useState({ id: '', nombre: '', rol: '' })
+  const [catalogo, setCatalogo] = useState(() => leerCache('categorias') || [])
 
-  /* ── Sesión Multi-Cuenta ── */
+  /* ── Datos (la sesión y las sucursales las carga el layout del panel) ── */
+  /* El aislamiento por sucursal lo garantiza RLS (supabase/fase2_finanzas_sucursal.sql). */
 
-  useEffect(() => {
-    const uid = localStorage.getItem('usuario_id')
-    if (!uid) {
-      router.replace('/')
-      return
-    }
-    setCurrentUser({
-      id: uid,
-      nombre: localStorage.getItem('usuario_nombre') || 'Usuario',
-      rol: localStorage.getItem('usuario_rol') || 'usuario',
+  function guardarMovimientos(sucursalId, filas) {
+    setPorSucursal(prev => {
+      const next = { ...prev, [sucursalId]: filas }
+      guardarCache('movimientos', next)
+      return next
     })
-  }, [router])
-
-  function handleLogout() {
-    localStorage.removeItem('usuario_id')
-    localStorage.removeItem('usuario_nombre')
-    localStorage.removeItem('usuario_rol')
-    router.replace('/')
-  }
-
-  /* ── Supabase (Aislamiento por usuario / Multi-Tenant) ── */
-
-  async function reload() {
-    setLoadError(false)
-    const uid = localStorage.getItem('usuario_id')
-    if (!uid) {
-      router.replace('/')
-      return
-    }
-    const { data, error } = await supabase
-      .from('transacciones')
-      .select('*')
-      .eq('id_usuario', uid)
-      .order('creado_en', { ascending: false })
-    if (error) { setLoadError(true); setLoading(false); return }
-    setMovements(data.map(mapRow))
-    setLoading(false)
   }
 
   useEffect(() => {
     let active = true
-    async function load() {
-      const uid = localStorage.getItem('usuario_id')
-      if (!uid) {
-        router.replace('/')
-        return
-      }
-      const { data, error } = await supabase
-        .from('transacciones')
-        .select('*')
-        .eq('id_usuario', uid)
-        .order('creado_en', { ascending: false })
-      if (!active) return
-      if (error) { setLoadError(true); setLoading(false); return }
-      setMovements(data.map(mapRow))
-      setLoading(false)
-    }
-    load()
+    fetchCategorias().then(({ data }) => {
+      if (!active || !data) return
+      setCatalogo(data)
+      guardarCache('categorias', data)
+    })
     return () => { active = false }
-  }, [router])
+  }, [guardarCache])
+
+  /* Movimientos de la sucursal activa (se recargan al cambiarla). */
+  useEffect(() => {
+    let active = true
+    fetchMovimientos(sucursalActiva, idsSucursales).then(({ data, error }) => {
+      if (!active) return
+      if (error) { setLoadError(true); return }
+      setLoadError(false)
+      setPage(1)
+      setPorSucursal(prev => {
+        const next = { ...prev, [sucursalActiva]: data.map(mapRow) }
+        guardarCache('movimientos', next)
+        return next
+      })
+    })
+    return () => { active = false }
+  }, [sucursalActiva, idsSucursales, guardarCache])
+
+  async function reload() {
+    setLoadError(false)
+    const { data, error } = await fetchMovimientos(sucursalActiva, idsSucursales)
+    if (error) { setLoadError(true); return }
+    guardarMovimientos(sucursalActiva, data.map(mapRow))
+  }
+
+  async function recargarCatalogo() {
+    const { data } = await fetchCategorias()
+    setCatalogo(data || [])
+    guardarCache('categorias', data || [])
+    return data || []
+  }
+
+  function categoriasPara(sucursalId, tipo) {
+    return catalogo.filter(c => c.sucursal_id === sucursalId && c.tipo === tipo)
+  }
 
   /* ── Datos derivados ── */
 
@@ -546,16 +666,28 @@ export default function Finanzas() {
     [movements]
   )
 
+  // El saldo se muestra en el encabezado común del panel mientras esta sección está abierta.
+  useEffect(() => {
+    setEncabezadoExtra(
+      <div className="balance-pill">
+        <span className="balance-label">Saldo</span>
+        <span className="balance-value">{loading ? '…' : `$${formatMoney(balance)}`}</span>
+      </div>
+    )
+  }, [balance, loading, setEncabezadoExtra])
+  useEffect(() => () => setEncabezadoExtra(null), [setEncabezadoExtra])
+
+  // Botón "+" de la isla de navegación (teléfono): abre "Generar un movimiento".
+  useEffect(() => {
+    setAccionPrincipal(currentView === 'reportes' ? null : 'Generar un movimiento')
+  }, [currentView, setAccionPrincipal])
+  useEffect(() => () => setAccionPrincipal(null), [setAccionPrincipal])
+
   const monthTitle = useMemo(() => {
     const d = new Date()
     const label = d.toLocaleDateString('es-MX', { month: 'long', year: 'numeric' })
     return label.charAt(0).toUpperCase() + label.slice(1)
   }, [])
-
-  const categorias = useMemo(() => {
-    const set = new Set(movements.map(m => m.categoria).filter(Boolean))
-    return [...set].sort((a,b) => a.localeCompare(b, 'es'))
-  }, [movements])
 
   const resumenRows = filtered.slice(0, 10)
   const isOut = chartType === 'salida'
@@ -566,13 +698,15 @@ export default function Finanzas() {
   const pageRows = filtered.slice((page - 1) * PER_PAGE, page * PER_PAGE)
 
   function exportCSV() {
-    const header = ['Fecha','Folio','Concepto','Categoría','Tipo','Monto']
+    const header = ['Fecha','Folio','Sucursal','Concepto','Categoría','Tipo','Método de pago','Monto']
     const rows = filtered.map(m => [
       new Date(m.date).toLocaleDateString('es-MX'),
       m.folio,
+      `"${m.sucursal}"`,
       `"${String(m.concepto || '').replace(/"/g,'""')}"`,
       `"${String(m.categoria || '').replace(/"/g,'""')}"`,
       m.tipo === 'entrada' ? 'Entrada' : 'Salida',
+      METODOS_PAGO[m.metodoPago] || m.metodoPago,
       m.amount.toFixed(2),
     ])
     const csv = [header, ...rows].map(r => r.join(',')).join('\n')
@@ -627,6 +761,17 @@ export default function Finanzas() {
     return { entrada, salida, total: entrada + salida }
   }, [active])
 
+  const reportChoferes = useMemo(() => {
+    const cobros = active
+      .filter(m => m.origen === 'chofer')
+      .sort((a, b) => new Date(b.creadoEn) - new Date(a.creadoEn))
+    const metodos = Object.keys(METODOS_PAGO).map(metodo => {
+      const delMetodo = cobros.filter(c => c.metodoPago === metodo)
+      return { metodo, cantidad: delMetodo.length, monto: delMetodo.reduce((s, c) => s + c.amount, 0) }
+    })
+    return { cobros, metodos, total: metodos.reduce((s, m) => s + m.monto, 0) }
+  }, [active])
+
   /* ── Exportar Reporte a Excel ── */
 
   function exportReportExcel() {
@@ -643,6 +788,9 @@ export default function Finanzas() {
     } else if (reportType === 'montos') {
       reportTitle = 'Reporte de Montos por Categoría'
       reportFilePrefix = 'reporte_montos_categorias'
+    } else if (reportType === 'choferes') {
+      reportTitle = 'Reporte de Cobros de Choferes'
+      reportFilePrefix = 'reporte_cobros_choferes'
     }
 
     const fileName = `${reportFilePrefix}_${dateSlug}.xls`
@@ -772,8 +920,51 @@ export default function Finanzas() {
       `
     }
 
-    // Detalle fila por fila de movimientos
-    const detailRowsHtml = active.map(m => `
+    if (reportType === 'choferes') {
+      summaryHtml = `
+        <table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse; margin-bottom: 20px; font-family: Segoe UI, Arial, sans-serif;">
+          <tr style="background-color:#059669; color:#ffffff; font-weight:bold;">
+            <th colspan="4" style="font-size:11pt; text-align:left; padding:8px;">COBROS DE CHOFERES POR MÉTODO DE PAGO (Total: $${formatMoney(reportChoferes.total)})</th>
+          </tr>
+          <tr style="background-color:#f8fafc; font-weight:bold;">
+            <td style="width:200px;">Método</td>
+            <td style="width:110px; text-align:right;">Cobros</td>
+            <td style="width:160px; text-align:right;">Monto ($)</td>
+            <td style="width:120px; text-align:right;">% del Total</td>
+          </tr>
+          ${reportChoferes.metodos.map(m => `
+            <tr>
+              <td>${METODOS_PAGO[m.metodo]}</td>
+              <td style="text-align:right;">${m.cantidad}</td>
+              <td style="text-align:right; font-weight:bold; color:#059669;">$${formatMoney(m.monto)}</td>
+              <td style="text-align:right;">${reportChoferes.total > 0 ? pctLabel(m.monto / reportChoferes.total) : '0%'}</td>
+            </tr>
+          `).join('')}
+          <tr style="background-color:#e0e7ff; font-weight:bold;">
+            <td>TOTAL</td>
+            <td style="text-align:right;">${reportChoferes.cobros.length}</td>
+            <td style="text-align:right;">$${formatMoney(reportChoferes.total)}</td>
+            <td style="text-align:right;">100%</td>
+          </tr>
+        </table>
+      `
+    }
+
+    // Detalle fila por fila: en el reporte de choferes solo sus cobros, con chofer, hora y método.
+    const esChoferes = reportType === 'choferes'
+    const filasDetalle = esChoferes ? reportChoferes.cobros : active
+    const detailRowsHtml = esChoferes
+    ? filasDetalle.map(c => `
+      <tr>
+        <td>${formatDateTime(c.creadoEn)}</td>
+        <td style="font-family:monospace;">${c.folio}</td>
+        <td>${c.autor || '—'}</td>
+        <td>${c.sucursal}</td>
+        <td>${METODOS_PAGO[c.metodoPago] || c.metodoPago}</td>
+        <td style="text-align:right; font-weight:bold; color:#059669;">+$${formatMoney(c.amount)}</td>
+      </tr>
+    `).join('')
+    : active.map(m => `
       <tr>
         <td>${formatDate(m.date)}</td>
         <td style="font-family:monospace;">${m.folio}</td>
@@ -815,14 +1006,14 @@ export default function Finanzas() {
           <tr style="background-color:#f1f5f9;">
             <td style="font-weight:bold; color:#475569; width:130px;">Periodo:</td>
             <td colspan="2" style="font-weight:bold; color:#0f172a;">${periodDesc}</td>
-            <td style="font-weight:bold; color:#475569; width:130px;">Usuario / Cuenta:</td>
-            <td colspan="2" style="font-weight:bold; color:#0f172a;">${currentUser.nombre || 'Usuario'}</td>
+            <td style="font-weight:bold; color:#475569; width:130px;">Sucursal:</td>
+            <td colspan="2" style="font-weight:bold; color:#0f172a;">${nombreSucursalActiva} · ${currentUser.nombre || 'Usuario'}</td>
           </tr>
           <tr style="background-color:#f8fafc;">
             <td style="font-weight:bold; color:#475569;">Fecha de emisión:</td>
             <td colspan="2">${genDate}</td>
             <td style="font-weight:bold; color:#475569;">Registros incluidos:</td>
-            <td colspan="2">${active.length} movimientos</td>
+            <td colspan="2">${filasDetalle.length} movimientos</td>
           </tr>
         </table>
 
@@ -832,8 +1023,17 @@ export default function Finanzas() {
         <!-- Detalle de transacciones -->
         <table border="1" cellpadding="6" cellspacing="0" style="border-collapse:collapse; width:100%; font-family: Segoe UI, Arial, sans-serif;">
           <tr style="background-color:#1e293b; color:#ffffff; font-weight:bold;">
-            <th colspan="6" style="font-size:11pt; text-align:left; padding:8px;">DETALLE DE TRANSACCIONES (${active.length} registros)</th>
+            <th colspan="6" style="font-size:11pt; text-align:left; padding:8px;">${esChoferes ? 'DETALLE DE COBROS DE CHOFERES' : 'DETALLE DE TRANSACCIONES'} (${filasDetalle.length} registros)</th>
           </tr>
+          ${esChoferes ? `
+          <tr style="background-color:#f1f5f9; font-weight:bold;">
+            <th style="width:150px; text-align:left;">Fecha y hora</th>
+            <th style="width:100px; text-align:left;">Folio</th>
+            <th style="width:180px; text-align:left;">Chofer</th>
+            <th style="width:120px; text-align:left;">Sucursal</th>
+            <th style="width:120px; text-align:left;">Método</th>
+            <th style="width:130px; text-align:right;">Monto ($)</th>
+          </tr>` : `
           <tr style="background-color:#f1f5f9; font-weight:bold;">
             <th style="width:110px; text-align:left;">Fecha</th>
             <th style="width:100px; text-align:left;">Folio</th>
@@ -841,7 +1041,7 @@ export default function Finanzas() {
             <th style="width:150px; text-align:left;">Categoría</th>
             <th style="width:280px; text-align:left;">Concepto</th>
             <th style="width:130px; text-align:right;">Monto ($)</th>
-          </tr>
+          </tr>`}
           ${detailRowsHtml || '<tr><td colspan="6" style="text-align:center; padding:14px; color:#64748b;">No hay transacciones para los filtros seleccionados</td></tr>'}
         </table>
       </body>
@@ -879,7 +1079,7 @@ export default function Finanzas() {
   function openAddModal() {
     setAddModalOpen(true)
     requestAnimationFrame(() => setAddModalShown(true))
-    setAddForm({ monto:'', tipo:'entrada', categoria:'', concepto:'' })
+    setAddForm(formInicialMovimiento(esVistaGlobal ? '' : sucursalActiva))
     setAddErrors({})
     setTimeout(() => montoRef.current && montoRef.current.focus(), 80)
   }
@@ -893,7 +1093,8 @@ export default function Finanzas() {
     const m = movements.find(x => x.id === id)
     if (!m) return
     setEditTarget(m)
-    setEditCategoria(m.categoria)
+    setEditCategoria(m.categoriaId)
+    setEditFecha(m.fecha)
     setEditConcepto(m.concepto)
     setEditMonto(String(m.amount))
     setEditErrors({})
@@ -907,6 +1108,12 @@ export default function Finanzas() {
     setTimeout(() => { setEditModalOpen(false); setEditTarget(null) }, 180)
   }
 
+  useEffect(() => {
+    function alAccionPrincipal() { openAddModal() }
+    window.addEventListener(EVENTO_ACCION, alAccionPrincipal)
+    return () => window.removeEventListener(EVENTO_ACCION, alAccionPrincipal)
+  })
+
   /* ── Escape ── */
 
   useEffect(() => {
@@ -916,7 +1123,6 @@ export default function Finanzas() {
       if (editModalOpen) closeEditModal()
       setMenuTarget(null)
       setConfirmTarget(null)
-      setDrawerOpen(false)
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
@@ -932,33 +1138,61 @@ export default function Finanzas() {
   /* ── Agregar movimiento ── */
 
   function handleAddChange(e) {
-    setAddForm(prev => ({ ...prev, [e.target.name]: e.target.value }))
+    const { name, value } = e.target
+    setAddForm(prev => {
+      const next = { ...prev, [name]: value }
+      // La categoría depende de la sucursal y del tipo.
+      if (name === 'tipo' || name === 'sucursalId') next.categoriaId = ''
+      return next
+    })
+    setAddErrors(prev => ({ ...prev, [name]: '' }))
+  }
+
+  /** Devuelve el id de la categoría elegida, creándola si es nueva. */
+  async function resolverCategoria(sucursalId, tipo, categoriaId, nuevaCategoria) {
+    if (categoriaId !== NUEVA_CATEGORIA) return { id: categoriaId }
+    const nombre = nuevaCategoria.trim()
+    const { data, error } = await supabase
+      .from('categorias').insert({ sucursal_id: sucursalId, tipo, nombre }).select('id').single()
+    if (!error) { await recargarCatalogo(); return { id: data.id } }
+    if (error.code === '23505') {
+      // Ya existía con otra capitalización: se usa la existente.
+      const cats = await recargarCatalogo()
+      const existente = cats.find(c => c.sucursal_id === sucursalId && c.tipo === tipo && c.nombre.trim().toLowerCase() === nombre.toLowerCase())
+      if (existente) return { id: existente.id }
+    }
+    return { error: error.message }
   }
 
   async function handleAddSubmit(e) {
     e.preventDefault()
     setAddErrors({})
     const monto = parseFloat(addForm.monto)
+    const sucursalDestino = esVistaGlobal ? addForm.sucursalId : sucursalActiva
     const errs = {}
+    if (!sucursalDestino) errs.sucursalId = 'Selecciona la cuenta.'
     if (!monto || monto <= 0 || Number.isNaN(monto)) errs.monto = 'Ingresa un monto mayor a cero.'
-    if (!addForm.categoria.trim()) errs.categoria = 'La categoría es obligatoria.'
+    if (!addForm.categoriaId) errs.categoriaId = 'Selecciona una categoría.'
+    if (addForm.categoriaId === NUEVA_CATEGORIA && !addForm.nuevaCategoria.trim()) errs.nuevaCategoria = 'Escribe el nombre de la categoría.'
     if (!addForm.concepto.trim()) errs.concepto = 'El concepto es obligatorio.'
+    if (!addForm.fecha) errs.fecha = 'La fecha es obligatoria.'
     if (Object.keys(errs).length > 0) { setAddErrors(errs); return }
 
-    const userId = localStorage.getItem('usuario_id')
-    if (!userId) { showToast('Inicia sesión de nuevo para guardar movimientos.'); return }
+    if (!currentUser.id) { showToast('Inicia sesión de nuevo para guardar movimientos.'); return }
 
-    const payload = {
-      tipo: addForm.tipo === 'entrada' ? 'Entrada' : 'Salida',
+    const categoria = await resolverCategoria(sucursalDestino, addForm.tipo, addForm.categoriaId, addForm.nuevaCategoria)
+    if (categoria.error) { showToast('Error: ' + categoria.error); return }
+
+    const { error: insertError } = await supabase.from('movimientos').insert({
+      sucursal_id: sucursalDestino,
+      tipo: addForm.tipo,
       monto,
-      categoria: addForm.categoria.trim(),
+      categoria_id: categoria.id,
       concepto: addForm.concepto.trim(),
-      id_usuario: userId,
-      folio_visual: 'FOL-' + Date.now().toString().slice(-5),
-      retirado: false,
-    }
-
-    const { error: insertError } = await supabase.from('transacciones').insert([payload])
+      fecha: addForm.fecha,
+      metodo_pago: addForm.metodoPago,
+      creado_por: currentUser.id,
+    })
 
     if (insertError) {
       console.error('Error al insertar en Supabase:', insertError)
@@ -980,23 +1214,16 @@ export default function Finanzas() {
     const monto = parseFloat(editMonto)
     const errs = {}
     if (!monto || monto <= 0 || Number.isNaN(monto)) errs.monto = 'Ingresa un monto mayor a cero.'
-    if (!editCategoria.trim()) errs.categoria = 'La categoría es obligatoria.'
+    if (!editCategoria) errs.categoria = 'Selecciona una categoría.'
     if (!editConcepto.trim()) errs.concepto = 'El concepto es obligatorio.'
+    if (!editFecha) errs.fecha = 'La fecha es obligatoria.'
     if (Object.keys(errs).length > 0) { setEditErrors(errs); return }
     if (!editTarget) return
 
-    const userId = localStorage.getItem('usuario_id')
-    if (!userId) { showToast('Sesión inválida. Vuelve a iniciar sesión.'); return }
-
     const { error: updateError } = await supabase
-      .from('transacciones')
-      .update({
-        categoria: editCategoria.trim(),
-        concepto: editConcepto.trim(),
-        monto
-      })
+      .from('movimientos')
+      .update({ categoria_id: editCategoria, concepto: editConcepto.trim(), monto, fecha: editFecha })
       .eq('id', editTarget.id)
-      .eq('id_usuario', userId)
 
     if (updateError) {
       console.error('Error al actualizar en Supabase:', updateError)
@@ -1009,31 +1236,30 @@ export default function Finanzas() {
     await reload()
   }
 
-  /* ── Eliminar movimiento ── */
+  /* ── Anular movimiento (no se borra: queda quién, cuándo y por qué) ── */
 
   function requestDelete(id) {
     const m = movements.find(x => x.id === id)
     if (!m) return
+    setMotivoAnulacion('')
+    setMotivoError('')
     setConfirmTarget(id)
   }
 
   async function deleteMovement() {
     if (!confirmTarget) return
+    if (!motivoAnulacion.trim()) { setMotivoError('Escribe el motivo de la anulación.'); return }
     const id = confirmTarget
     setConfirmTarget(null)
 
-    const userId = localStorage.getItem('usuario_id')
-    if (!userId) { showToast('Sesión inválida. Vuelve a iniciar sesión.'); return }
-
     const { error } = await supabase
-      .from('transacciones')
-      .delete()
+      .from('movimientos')
+      .update({ anulado: true, motivo_anulacion: motivoAnulacion.trim() })
       .eq('id', id)
-      .eq('id_usuario', userId)
 
-    if (error) { showToast('No se pudo eliminar el movimiento.'); return }
+    if (error) { showToast('No se pudo anular: ' + error.message); return }
 
-    showToast('Movimiento eliminado correctamente.')
+    showToast('Movimiento anulado. Ya no cuenta en saldos ni reportes.')
     await reload()
   }
 
@@ -1068,16 +1294,24 @@ export default function Finanzas() {
   }
 
   function renderTable(data) {
+    if (loading) {
+      return <tr className="empty-row"><td colSpan="7"><EsqueletoTabla filas={6} columnas={5} /></td></tr>
+    }
     if (!data.length) {
       return <tr className="empty-row"><td colSpan="7">No hay movimientos que coincidan con los filtros seleccionados.</td></tr>
     }
     return data.map(m => {
       const isIn = m.tipo === 'entrada'
       return (
-        <tr key={m.id} className={m.retirado ? 'row-retired' : ''}>
+        <tr key={m.id} className={m.retirado ? 'row-retired' : ''} title={m.retirado ? `Anulado: ${m.motivoAnulacion}` : undefined}>
           <td>{formatDate(m.date)}</td>
           <td className="op-id">{m.folio}</td>
-          <td>{m.concepto}</td>
+          <td>
+            {m.concepto}
+            <span className="row-meta">
+              {esVistaGlobal && `${m.sucursal} · `}{METODOS_PAGO[m.metodoPago] || m.metodoPago}{m.retirado && ' · Anulado'}
+            </span>
+          </td>
           <td>
             <span className="cat-chip">
               <span className="cat-dot" style={{ '--c': colorOf(m.categoria) }}></span>
@@ -1108,9 +1342,33 @@ export default function Finanzas() {
 
   /* ── Select helpers (inline) ── */
 
+  const filtrosActivos =
+    (filters.period !== 'all' ? 1 : 0) + (filters.type !== 'all' ? 1 : 0) + (filters.sort !== 'date' ? 1 : 0)
+
   function renderFilters(prefix) {
+    const resumenFiltros = [
+      getPeriodDescription(filters.period, filters.startDate, filters.endDate),
+      TYPE_OPTIONS.find(o => o.value === filters.type)?.label,
+      SORT_OPTIONS.find(o => o.value === filters.sort)?.label,
+    ].join(' · ')
     return (
-      <div className="filter-bar">
+      <>
+      {/* En teléfono los filtros se pliegan detrás de este botón; en computadora siempre están visibles. */}
+      <button
+        type="button"
+        className={`filtros-toggle ${filtrosAbiertos ? 'abierto' : ''}`}
+        aria-expanded={filtrosAbiertos}
+        aria-controls={`${prefix}Filtros`}
+        onClick={() => setFiltrosAbiertos(v => !v)}
+      >
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+        <span className="filtros-toggle-texto">
+          <strong>Filtros{filtrosActivos > 0 && <span className="filtros-contador">{filtrosActivos}</span>}</strong>
+          <span className="filtros-resumen">{resumenFiltros}</span>
+        </span>
+        <svg aria-hidden="true" className="filtros-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+      </button>
+      <div id={`${prefix}Filtros`} className={`filter-bar ${filtrosAbiertos ? '' : 'filtros-plegados'}`}>
         <SelectDropdown
           id={`${prefix}Period`}
           label="Periodo"
@@ -1207,115 +1465,14 @@ export default function Finanzas() {
           onChange={val => onFilterChange('sort', val)}
         />
       </div>
+      </>
     )
   }
 
   /* ═══════════════════ Render ═══════════════════ */
 
   return (
-    <div className="app">
-
-      {/* ── Drawer de navegación ── */}
-      <div
-        className={`drawer-overlay ${drawerOpen ? 'show' : ''}`}
-        hidden={!drawerOpen}
-        onClick={e => { if (e.target === e.currentTarget) setDrawerOpen(false) }}
-      >
-        <nav className="drawer">
-          <div className="drawer-header">
-            <span className="drawer-brand">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>
-              Finanzas
-            </span>
-            <button className="drawer-close" onClick={() => setDrawerOpen(false)} aria-label="Cerrar menú">&times;</button>
-          </div>
-
-          <div className="drawer-user-card">
-            <div className="drawer-user-avatar">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
-              </svg>
-            </div>
-            <div className="drawer-user-info">
-              <span className="drawer-user-name">{currentUser.nombre || 'Mi Cuenta'}</span>
-              <span className="drawer-user-badge">{currentUser.rol === 'admin' ? 'Administrador' : 'Cuenta Activa'}</span>
-            </div>
-          </div>
-
-          <ul className="drawer-nav">
-            <li>
-              <a
-                href="#"
-                className={`drawer-link ${currentView === 'resumen' ? 'active' : ''}`}
-                onClick={e => { e.preventDefault(); setCurrentView('resumen'); setDrawerOpen(false); setMenuTarget(null) }}
-              >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-                Resumen
-              </a>
-            </li>
-            <li>
-              <a
-                href="#"
-                className={`drawer-link ${currentView === 'todos' ? 'active' : ''}`}
-                onClick={e => { e.preventDefault(); setCurrentView('todos'); setDrawerOpen(false); setMenuTarget(null) }}
-              >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
-                Todos los registros
-              </a>
-            </li>
-            <li>
-              <a
-                href="#"
-                className={`drawer-link ${currentView === 'reportes' ? 'active' : ''}`}
-                onClick={e => { e.preventDefault(); setCurrentView('reportes'); setDrawerOpen(false); setMenuTarget(null); setReportType('frecuencia') }}
-              >
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
-                Reportes
-              </a>
-            </li>
-          </ul>
-          <div className="drawer-footer">
-            <button className="theme-toggle" onClick={toggleDarkMode}>
-              {darkMode ? (
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
-              ) : (
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
-              )}
-              <span>{darkMode ? 'Modo claro' : 'Modo oscuro'}</span>
-            </button>
-            <button className="theme-toggle" onClick={handleLogout}>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-              <span>Cerrar sesión</span>
-            </button>
-          </div>
-        </nav>
-      </div>
-
-      {/* ── Encabezado ── */}
-      <header className="app-header">
-        <button className="hamburger" onClick={() => setDrawerOpen(true)} aria-label="Abrir menú">
-          <span></span><span></span><span></span>
-        </button>
-        <div>
-          <h1 className="app-title">Finanzas</h1>
-          <p className="app-subtitle">{VIEW_SUBTITLES[currentView]}</p>
-        </div>
-        <div className="header-account-group">
-          <div className="account-user-pill" title={`Cuenta activa: ${currentUser.nombre} (${currentUser.rol})`}>
-            <span className="account-user-avatar">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" style={{ width:14, height:14 }}>
-                <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>
-              </svg>
-            </span>
-            <span className="account-user-name">{currentUser.nombre || 'Usuario'}</span>
-          </div>
-          <div className="balance-pill">
-            <span className="balance-label">Saldo</span>
-            <span className="balance-value">${formatMoney(balance)}</span>
-          </div>
-        </div>
-      </header>
-
+    <>
       {loadError && (
         <div className="error-banner" role="alert">
           <span>No se pudieron cargar los movimientos. Revisa tu conexión.</span>
@@ -1388,7 +1545,7 @@ export default function Finanzas() {
           </div>
           {renderFilters("resumen")}
           <div className="table-wrap">
-            <table className="operations-table">
+            <table className="operations-table mov-table">
               <thead>
                 <tr>
                   <th>Fecha</th>
@@ -1431,7 +1588,7 @@ export default function Finanzas() {
           </div>
           {renderFilters("todos")}
           <div className="table-wrap">
-            <table className="operations-table">
+            <table className="operations-table mov-table">
               <thead>
                 <tr>
                   <th>Fecha</th>
@@ -1546,13 +1703,41 @@ export default function Finanzas() {
         )}
 
         {reportType === 'total' && <TotalesCard totales={reportTotales} />}
+
+        {reportType === 'choferes' && (
+          <div className="report-stack">
+            {!vistaIncluyeChoferes && reportChoferes.cobros.length === 0 && cuentaChoferes && (
+              <p className="extension-alert info">
+                Los cobros de choferes se registran en la cuenta <strong>{cuentaChoferes.nombre}</strong>. Elígela en el selector de arriba para verlos.
+              </p>
+            )}
+            <CobrosMetodoCard metodos={reportChoferes.metodos} total={reportChoferes.total} cantidad={reportChoferes.cobros.length} />
+            <CobrosDetalleCard cobros={reportChoferes.cobros} mostrarSucursal={esVistaGlobal} />
+          </div>
+        )}
       </div>
 
       {/* ── Menú contextual de fila ── */}
       {menuTarget && (
         <div className="row-menu" style={{ top: menuPos.top, left: menuPos.left }}>
-          <button className="row-menu-item" onClick={() => { const id = menuTarget; setMenuTarget(null); openEditModal(id) }}>Modificar</button>
-          <button className="row-menu-item row-menu-danger" onClick={() => { const id = menuTarget; setMenuTarget(null); requestDelete(id) }}>Eliminar</button>
+          {(() => {
+            const m = movements.find(x => x.id === menuTarget)
+            if (!m) return null
+            if (m.retirado) return <p className="row-menu-note">Anulado: {m.motivoAnulacion}</p>
+            if (m.origen === 'chofer') return (
+              <>
+                <p className="row-menu-note">Cobro registrado por {m.autor || 'un chofer'}; solo se puede anular.</p>
+                <button className="row-menu-item row-menu-danger" onClick={() => { setMenuTarget(null); requestDelete(m.id) }}>Anular</button>
+              </>
+            )
+            if (m.origen !== 'manual') return <p className="row-menu-note">Generado por un pedido; se corrige desde el pedido.</p>
+            return (
+              <>
+                <button className="row-menu-item" onClick={() => { setMenuTarget(null); openEditModal(m.id) }}>Modificar</button>
+                <button className="row-menu-item row-menu-danger" onClick={() => { setMenuTarget(null); requestDelete(m.id) }}>Anular</button>
+              </>
+            )
+          })()}
         </div>
       )}
 
@@ -1564,13 +1749,25 @@ export default function Finanzas() {
       >
         <div className="modal-card modal-card-sm" role="dialog" aria-modal="true" aria-labelledby="confirmDeleteTitle">
           <div className="modal-header">
-            <h3 className="modal-title" id="confirmDeleteTitle">Eliminar movimiento</h3>
+            <h3 className="modal-title" id="confirmDeleteTitle">Anular movimiento</h3>
             <button type="button" className="modal-close" onClick={() => setConfirmTarget(null)} aria-label="Cerrar">&times;</button>
           </div>
-          <p className="confirm-text">¿Estás seguro de eliminar este movimiento? Esta acción no se puede deshacer.</p>
+          <p className="confirm-text">El movimiento quedará registrado como anulado y dejará de contar en saldos y reportes. No se puede deshacer.</p>
+          <div className="form-row">
+            <label htmlFor="motivoAnulacion">Motivo</label>
+            <input
+              type="text"
+              id="motivoAnulacion"
+              placeholder="Ej. Se registró dos veces"
+              value={motivoAnulacion}
+              onChange={e => { setMotivoAnulacion(e.target.value); setMotivoError('') }}
+              className={motivoError ? 'invalid' : ''}
+            />
+            {motivoError && <p className="form-error">{motivoError}</p>}
+          </div>
           <div className="modal-actions">
             <button type="button" className="btn btn-ghost" onClick={() => setConfirmTarget(null)}>Cancelar</button>
-            <button type="button" className="btn btn-danger" onClick={deleteMovement}>Eliminar</button>
+            <button type="button" className="btn btn-danger" onClick={deleteMovement}>Anular</button>
           </div>
         </div>
       </div>
@@ -1587,6 +1784,16 @@ export default function Finanzas() {
             <button type="button" className="modal-close" onClick={closeAddModal} aria-label="Cerrar">&times;</button>
           </div>
           <form id="movementForm" onSubmit={handleAddSubmit} noValidate>
+            {esVistaGlobal && (
+              <div className="form-row">
+                <label htmlFor="addSucursal">Cuenta</label>
+                <select id="addSucursal" name="sucursalId" value={addForm.sucursalId} onChange={handleAddChange} className={addErrors.sucursalId ? 'invalid' : ''}>
+                  <option value="">Selecciona…</option>
+                  {cuentasVisibles.map(x => <option key={x.id} value={x.id}>{x.nombre}</option>)}
+                </select>
+                {addErrors.sucursalId && <p className="form-error">{addErrors.sucursalId}</p>}
+              </div>
+            )}
             <div className="form-row">
               <label htmlFor="addMonto">Monto</label>
               <input ref={montoRef} type="number" id="addMonto" name="monto" min="0.01" step="0.01" placeholder="0.00" required value={addForm.monto} onChange={handleAddChange} className={addErrors.monto ? 'invalid' : ''} />
@@ -1601,16 +1808,37 @@ export default function Finanzas() {
             </fieldset>
             <div className="form-row">
               <label htmlFor="addCategoria">Categoría</label>
-              <input type="text" id="addCategoria" name="categoria" list="categorias-list" placeholder="Ej. Alimentación" required value={addForm.categoria} onChange={handleAddChange} className={addErrors.categoria ? 'invalid' : ''} />
-              <datalist id="categorias-list">
-                {categorias.map(c => <option key={c} value={c} />)}
-              </datalist>
-              {addErrors.categoria && <p className="form-error">{addErrors.categoria}</p>}
+              <select id="addCategoria" name="categoriaId" value={addForm.categoriaId} onChange={handleAddChange} disabled={esVistaGlobal && !addForm.sucursalId} className={addErrors.categoriaId ? 'invalid' : ''}>
+                <option value="">{esVistaGlobal && !addForm.sucursalId ? 'Primero elige la cuenta' : 'Selecciona…'}</option>
+                {categoriasPara(esVistaGlobal ? addForm.sucursalId : sucursalActiva, addForm.tipo).map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                <option value={NUEVA_CATEGORIA}>+ Nueva categoría…</option>
+              </select>
+              {addErrors.categoriaId && <p className="form-error">{addErrors.categoriaId}</p>}
             </div>
+            {addForm.categoriaId === NUEVA_CATEGORIA && (
+              <div className="form-row">
+                <label htmlFor="addNuevaCategoria">Nombre de la nueva categoría</label>
+                <input type="text" id="addNuevaCategoria" name="nuevaCategoria" value={addForm.nuevaCategoria} onChange={handleAddChange} className={addErrors.nuevaCategoria ? 'invalid' : ''} />
+                {addErrors.nuevaCategoria && <p className="form-error">{addErrors.nuevaCategoria}</p>}
+              </div>
+            )}
             <div className="form-row">
               <label htmlFor="addConcepto">Concepto</label>
-              <input type="text" id="addConcepto" name="concepto" placeholder="Ej. Supermercado mensual" required value={addForm.concepto} onChange={handleAddChange} className={addErrors.concepto ? 'invalid' : ''} />
+              <input type="text" id="addConcepto" name="concepto" placeholder="Ej. Pago de luz de noviembre" required value={addForm.concepto} onChange={handleAddChange} className={addErrors.concepto ? 'invalid' : ''} />
               {addErrors.concepto && <p className="form-error">{addErrors.concepto}</p>}
+            </div>
+            <div className="form-row-pair">
+              <div className="form-row">
+                <label htmlFor="addFecha">Fecha</label>
+                <input type="date" id="addFecha" name="fecha" max={hoyISO()} value={addForm.fecha} onChange={handleAddChange} className={addErrors.fecha ? 'invalid' : ''} />
+                {addErrors.fecha && <p className="form-error">{addErrors.fecha}</p>}
+              </div>
+              <div className="form-row">
+                <label htmlFor="addMetodo">Método de pago</label>
+                <select id="addMetodo" name="metodoPago" value={addForm.metodoPago} onChange={handleAddChange}>
+                  {Object.entries(METODOS_PAGO).map(([valor, etiqueta]) => <option key={valor} value={valor}>{etiqueta}</option>)}
+                </select>
+              </div>
             </div>
             <div className="modal-actions">
               <button type="button" className="btn btn-ghost" onClick={closeAddModal}>Cancelar</button>
@@ -1634,8 +1862,10 @@ export default function Finanzas() {
           {editTarget && (
             <>
               <div className="edit-info">
-                <div className="info-row"><span className="info-label">ID</span><span>{editTarget.folio}</span></div>
-                <div className="info-row"><span className="info-label">Fecha</span><span>{formatDate(editTarget.date)}</span></div>
+                <div className="info-row"><span className="info-label">Folio</span><span>{editTarget.folio}</span></div>
+                <div className="info-row"><span className="info-label">Sucursal</span><span>{editTarget.sucursal}</span></div>
+                <div className="info-row"><span className="info-label">Tipo</span><span>{editTarget.tipo === 'entrada' ? 'Entrada' : 'Salida'}</span></div>
+                <div className="info-row"><span className="info-label">Registró</span><span>{editTarget.autor || '—'}</span></div>
               </div>
               <form id="editForm" onSubmit={handleEditSubmit} noValidate>
                 <div className="form-row">
@@ -1645,13 +1875,20 @@ export default function Finanzas() {
                 </div>
                 <div className="form-row">
                   <label htmlFor="editCategoria">Categoría</label>
-                  <input ref={editCategoriaRef} type="text" id="editCategoria" list="categorias-list" value={editCategoria} onChange={e => { setEditCategoria(e.target.value); setEditErrors(prev => ({ ...prev, categoria: '' })) }} className={editErrors.categoria ? 'invalid' : ''} />
+                  <select ref={editCategoriaRef} id="editCategoria" value={editCategoria} onChange={e => { setEditCategoria(e.target.value); setEditErrors(prev => ({ ...prev, categoria: '' })) }} className={editErrors.categoria ? 'invalid' : ''}>
+                    {categoriasPara(editTarget.sucursalId, editTarget.tipo).map(c => <option key={c.id} value={c.id}>{c.nombre}</option>)}
+                  </select>
                   {editErrors.categoria && <p className="form-error">{editErrors.categoria}</p>}
                 </div>
                 <div className="form-row">
                   <label htmlFor="editConcepto">Concepto</label>
                   <input type="text" id="editConcepto" value={editConcepto} onChange={e => { setEditConcepto(e.target.value); setEditErrors(prev => ({ ...prev, concepto: '' })) }} className={editErrors.concepto ? 'invalid' : ''} />
                   {editErrors.concepto && <p className="form-error">{editErrors.concepto}</p>}
+                </div>
+                <div className="form-row">
+                  <label htmlFor="editFecha">Fecha</label>
+                  <input type="date" id="editFecha" max={hoyISO()} value={editFecha} onChange={e => { setEditFecha(e.target.value); setEditErrors(prev => ({ ...prev, fecha: '' })) }} className={editErrors.fecha ? 'invalid' : ''} />
+                  {editErrors.fecha && <p className="form-error">{editErrors.fecha}</p>}
                 </div>
                 <div className="modal-actions">
                   <button type="button" className="btn btn-ghost" onClick={closeEditModal}>Cancelar</button>
@@ -1667,6 +1904,6 @@ export default function Finanzas() {
       <div className={`toast ${toast.show ? 'show' : ''}`} role="status" aria-live="polite" hidden={!toast.mounted}>
         {toast.message}
       </div>
-    </div>
+    </>
   )
 }

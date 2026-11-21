@@ -18,8 +18,16 @@ const plusJakartaSans = Plus_Jakarta_Sans({
 });
 
 export const metadata = {
-  title: "Finanzas",
-  description: "Panel de finanzas personales",
+  title: "Quality",
+  description: "Finanzas, pedidos y personal de las sucursales Quality",
+};
+
+// viewportFit "cover" permite usar env(safe-area-inset-*) para que la isla de navegación
+// no quede debajo de la barra de inicio del iPhone.
+export const viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({ children }) {
